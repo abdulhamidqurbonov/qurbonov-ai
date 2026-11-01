@@ -56,6 +56,7 @@ def providers(req: Request):
     return {
         "needPass": bool(env("APP_PASSWORD")),
         "authorized": authorized(req),
+        "image": [n for _, n, _ in image_providers()],
         "providers": [{"id": p.id, "name": p.name, "model": p.model, "configured": bool(p.keys)}
                       for p in ordered_providers()],
     }
@@ -123,6 +124,101 @@ async def chat(req: Request):
     detail = ("Hech bir model javob bera olmadi: " + "; ".join(f"{s['name']} — {s['reason']}" for s in skipped)
               if ids else "Hali birorta API kalit qo'yilmagan. .env faylga kamida bitta kalit qo'ying.")
     return JSONResponse({"detail": detail, "skipped": skipped}, 503)
+
+
+# ---------- Rasm yaratish ----------
+import base64  # noqa: E402
+
+import httpx  # noqa: E402
+
+from providers import CLIENT, classify  # noqa: E402
+
+
+async def to_english(text: str) -> str:
+    if env("TRANSLATE_PROMPT") == "0":
+        return text
+    for p in ordered_providers():
+        if not p.keys or p.kind != "openai":
+            continue
+        try:
+            r = await CLIENT.post(f"{p.base}/chat/completions", timeout=8, headers={"Authorization": f"Bearer {p.keys[0]}"},
+                                  json={"model": p.models[0], "max_tokens": 200, "stream": False, "messages": [
+                                      {"role": "system", "content": "Translate the user's image request into one detailed English prompt "
+                                       "for an image generator. Output ONLY the prompt, no quotes, no explanations."},
+                                      {"role": "user", "content": text}]})
+            if r.status_code == 200:
+                out = (r.json()["choices"][0]["message"]["content"] or "").strip().strip("\"'")
+                if out:
+                    return out[:900]
+        except Exception:
+            continue
+    return text
+
+
+async def gen_cloudflare(prompt: str) -> str:
+    model = env("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
+    base = env("CF_BASE_URL", "https://api.cloudflare.com/client/v4")
+    r = await CLIENT.post(f"{base}/accounts/{env('CF_ACCOUNT_ID')}/ai/run/{model}", timeout=60,
+                          headers={"Authorization": f"Bearer {env('CF_API_TOKEN')}"}, json={"prompt": prompt, "steps": 4})
+    if r.status_code != 200:
+        raise classify(r.status_code)
+    ct = r.headers.get("content-type", "")
+    if ct.startswith("image/"):
+        return f"data:{ct};base64,{base64.b64encode(r.content).decode()}"
+    b64 = (r.json().get("result") or {}).get("image")
+    if not b64:
+        raise ProviderError("other", "rasm qaytmadi")
+    return f"data:image/jpeg;base64,{b64}"
+
+
+async def gen_pollinations(prompt: str) -> str:
+    import random
+    from urllib.parse import quote as q
+    key = env("POLLINATIONS_API_KEY")
+    seed = random.randint(0, 10**9)
+    host = f"https://gen.pollinations.ai/image/{q(prompt)}" if key else f"https://image.pollinations.ai/prompt/{q(prompt)}"
+    try:
+        r = await CLIENT.get(f"{host}?model=flux&width=1024&height=1024&seed={seed}&nologo=true", timeout=40,
+                             headers={"Authorization": f"Bearer {key}"} if key else {})
+    except httpx.HTTPError:
+        raise ProviderError("busy", "javob kelmadi")
+    if r.status_code != 200:
+        raise classify(r.status_code)
+    ct = r.headers.get("content-type", "image/jpeg")
+    if not ct.startswith("image/"):
+        raise ProviderError("other", "rasm qaytmadi")
+    return f"data:{ct};base64,{base64.b64encode(r.content).decode()}"
+
+
+def image_providers():
+    out = []
+    if env("CF_ACCOUNT_ID") and env("CF_API_TOKEN"):
+        out.append(("cloudflare", "Cloudflare FLUX", gen_cloudflare))
+    if env("POLLINATIONS") != "0":
+        out.append(("pollinations", "Pollinations", gen_pollinations))
+    return out
+
+
+@app.post("/api/image")
+async def image(req: Request):
+    if not authorized(req):
+        return JSONResponse({"detail": "Parol noto'g'ri"}, 401)
+    try:
+        data = await req.json()
+    except Exception:
+        return JSONResponse({"detail": "Noto'g'ri so'rov"}, 400)
+    text = str(data.get("prompt") or "").strip()[:1500]
+    if not text:
+        return JSONResponse({"detail": "Rasm tavsifini yozing"}, 400)
+    prompt = await to_english(text)
+    skipped = []
+    for pid, name, fn in image_providers():
+        try:
+            return {"image": await fn(prompt), "provider": name, "prompt": prompt, "skipped": skipped}
+        except ProviderError as e:
+            skipped.append({"pid": pid, "name": name, "kind": e.kind, "short": SHORT[e.kind], "reason": e.reason})
+    detail = "; ".join(f"{s['name']} — {s['reason']}" for s in skipped) or "rasm xizmati ulanmagan"
+    return JSONResponse({"detail": "Rasm yaratib bo'lmadi: " + detail, "skipped": skipped}, 503)
 
 
 # ---------- Sayt ----------

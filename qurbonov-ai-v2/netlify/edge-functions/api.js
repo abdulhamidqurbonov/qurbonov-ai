@@ -1,22 +1,31 @@
 // Qurbonov AI — Netlify server qismi (Edge Function).
-// /api/providers  — qaysi modellar ulangan
-// /api/chat       — javobni so'zma-so'z (stream) qaytaradi; model ishlamasa avtomatik keyingisiga o'tadi
 //
-// API kalitlar Netlify sozlamalarida (Environment variables) saqlanadi — saytda ko'rinmaydi.
+//  Sayt uchun:
+//    GET  /api/providers  — ulangan modellar va imkoniyatlar
+//    POST /api/chat       — javob so'zma-so'z (stream). Rasm biriktirilsa — rasmni ko'ra oladigan modelga yuboriladi
+//    POST /api/image      — rasm chizish; rasm biriktirilsa — o'sha rasmni tahrirlash
+//    POST /api/stt        — ovozni matnga (Aisha → Groq Whisper → Cloudflare Whisper)
+//    POST /api/tts        — matnni ovozga (Aisha, o'zbekcha)
+//
+//  Boshqa ilovalar uchun (Unity, Python, Telegram bot ...) — OpenAI bilan bir xil format:
+//    GET  /v1/models
+//    POST /v1/chat/completions      (Authorization: Bearer <API_KEY>)
+//
+// Kalitlar Netlify → Environment variables da saqlanadi — saytda ko'rinmaydi.
 
 const env = (k) => ((globalThis.Netlify?.env?.get(k) ?? Deno.env.get(k)) || "").trim();
 const list = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 const PROVIDERS = {
-  groq:       { name: "Groq",       kind: "openai",    base: "https://api.groq.com/openai/v1",                          modelEnv: "GROQ_MODEL",       def: "openai/gpt-oss-120b",                    keyEnv: "GROQ_API_KEY" },
-  gemini:     { name: "Gemini",     kind: "openai",    base: "https://generativelanguage.googleapis.com/v1beta/openai", modelEnv: "GEMINI_MODEL",     def: "gemini-flash-lite-latest,gemini-3.8-flash", keyEnv: "GEMINI_API_KEY" },
-  cerebras:   { name: "Cerebras",   kind: "openai",    base: "https://api.cerebras.ai/v1",                              modelEnv: "CEREBRAS_MODEL",   def: "llama-3.3-70b",                          keyEnv: "CEREBRAS_API_KEY" },
-  mistral:    { name: "Mistral",    kind: "openai",    base: "https://api.mistral.ai/v1",                               modelEnv: "MISTRAL_MODEL",    def: "mistral-small-latest",                   keyEnv: "MISTRAL_API_KEY" },
-  openrouter: { name: "OpenRouter", kind: "openai",    base: "https://openrouter.ai/api/v1",                            modelEnv: "OPENROUTER_MODEL", def: "openrouter/free",                        keyEnv: "OPENROUTER_API_KEY" },
-  qwen:       { name: "Qwen",       kind: "openai",    base: "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1", modelEnv: "QWEN_MODEL", def: "qwen3.8-max",                  keyEnv: "QWEN_API_KEY" },
-  claude:     { name: "Claude",     kind: "anthropic", base: "https://api.anthropic.com/v1",                            modelEnv: "CLAUDE_MODEL",     def: "claude-sonnet-5-5",                      keyEnv: "ANTHROPIC_API_KEY" },
-  deepseek:   { name: "DeepSeek",   kind: "openai",    base: "https://api.deepseek.com/v1",                             modelEnv: "DEEPSEEK_MODEL",   def: "deepseek-chat",                          keyEnv: "DEEPSEEK_API_KEY" },
-  openai:     { name: "ChatGPT",    kind: "openai",    base: "https://api.openai.com/v1",                               modelEnv: "OPENAI_MODEL",     def: "gpt-4o-mini",                            keyEnv: "OPENAI_API_KEY" },
+  groq:       { name: "Groq",       kind: "openai",    base: "https://api.groq.com/openai/v1",                          modelEnv: "GROQ_MODEL",       def: "openai/gpt-oss-120b",                       keyEnv: "GROQ_API_KEY",       vision: () => [env("GROQ_VISION_MODEL") || "meta-llama/llama-4-scout-17b-16e-instruct"] },
+  gemini:     { name: "Gemini",     kind: "openai",    base: "https://generativelanguage.googleapis.com/v1beta/openai", modelEnv: "GEMINI_MODEL",     def: "gemini-flash-lite-latest,gemini-3.8-flash", keyEnv: "GEMINI_API_KEY",     vision: (p) => modelsOf(p) },
+  openrouter: { name: "OpenRouter", kind: "openai",    base: "https://openrouter.ai/api/v1",                            modelEnv: "OPENROUTER_MODEL", def: "openrouter/free",                           keyEnv: "OPENROUTER_API_KEY" },
+  qwen:       { name: "Qwen",       kind: "openai",    base: "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1", modelEnv: "QWEN_MODEL", def: "qwen3.8-max",                     keyEnv: "QWEN_API_KEY" },
+  cerebras:   { name: "Cerebras",   kind: "openai",    base: "https://api.cerebras.ai/v1",                              modelEnv: "CEREBRAS_MODEL",   def: "llama-3.3-70b",                             keyEnv: "CEREBRAS_API_KEY" },
+  mistral:    { name: "Mistral",    kind: "openai",    base: "https://api.mistral.ai/v1",                               modelEnv: "MISTRAL_MODEL",    def: "mistral-small-latest",                      keyEnv: "MISTRAL_API_KEY" },
+  claude:     { name: "Claude",     kind: "anthropic", base: "https://api.anthropic.com/v1",                            modelEnv: "CLAUDE_MODEL",     def: "claude-sonnet-5-5",                         keyEnv: "ANTHROPIC_API_KEY",  vision: (p) => modelsOf(p) },
+  deepseek:   { name: "DeepSeek",   kind: "openai",    base: "https://api.deepseek.com/v1",                             modelEnv: "DEEPSEEK_MODEL",   def: "deepseek-chat",                             keyEnv: "DEEPSEEK_API_KEY" },
+  openai:     { name: "ChatGPT",    kind: "openai",    base: "https://api.openai.com/v1",                               modelEnv: "OPENAI_MODEL",     def: "gpt-4o-mini",                               keyEnv: "OPENAI_API_KEY",     vision: (p) => modelsOf(p) },
 };
 
 const keysOf = (p) => list(env(p.keyEnv));
@@ -31,7 +40,10 @@ function order() {
 const SYSTEM = env("SYSTEM_PROMPT") ||
   "Sen Qurbonov AI — Alor Qurbonov yaratgan aqlli yordamchisan. Foydalanuvchi qaysi tilda yozsa, o'sha tilda javob ber (odatda o'zbekcha). " +
   "Aniq, foydali va halol javob ber. Muhim: bu suhbatda avval boshqa model javob bergan bo'lishi mumkin. Avvalgi barcha 'assistant' " +
-  "javoblarini o'zingniki deb qabul qil va suhbatni to'xtagan joyidan uzluksiz davom ettir — foydalanuvchidan hech narsani qayta so'rama.";
+  "javoblarini o'zingniki deb qabul qil va suhbatni to'xtagan joyidan uzluksiz davom ettir — foydalanuvchidan hech narsani qayta so'rama. " +
+  "Rasm chizish so'ralsa, sayt uni o'zi chizadi — sen rasm chiza olmayman dema.";
+const VOICE_HINT =
+  "\n\nHozir ovozli suhbat: javobing ovoz bilan o'qiladi. Qisqa va jonli gapir (1–4 gap), markdown, ro'yxat, jadval, emoji va kod ishlatma.";
 
 // ---------- Xato turlari ----------
 const SHORT = { limit: "limit tugadi", auth: "kalit xato", notfound: "mavjud emas", busy: "band", other: "xato" };
@@ -42,6 +54,36 @@ function classify(code) {
   if (code === 404) return new PErr("notfound", "model topilmadi (404)");
   if (code >= 500) return new PErr("busy", `server band (${code})`);
   return new PErr("other", `xato ${code}`);
+}
+
+const json = (data, status = 200, extra = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", ...extra } });
+
+function authorized(req) {
+  const pass = env("APP_PASSWORD");
+  return !pass || req.headers.get("x-qai-pass") === pass;
+}
+
+async function withTimeout(ms, fn) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fn(ctrl.signal); } finally { clearTimeout(t); }
+}
+
+// ---------- base64 yordamchilari ----------
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function dataUrlToBlob(url) {
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url || "");
+  if (!m) return null;
+  const bin = atob(m[3]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: m[1] || "application/octet-stream" });
 }
 
 // ---------- Modelni avtomatik topish ----------
@@ -71,117 +113,256 @@ async function discover(pid, p, key) {
   return ids;
 }
 
-// ---------- Bitta modelga so'rov (stream) ----------
-async function openStream(p, key, model, messages) {
+// ================= CHAT =================
+
+// Xabarlarni tozalash: {role, content, images?}. Ketma-ket bir xil rollar birlashtiriladi.
+function clean(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    const role = m.role === "assistant" ? "assistant" : "user";
+    const content = String(m.content || "");
+    const images = role === "user" && Array.isArray(m.images) ? m.images.filter((u) => /^data:image\//.test(u)).slice(0, 4) : [];
+    if (!content.trim() && !images.length) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === role) { last.content += "\n\n" + content; last.images.push(...images); }
+    else out.push({ role, content, images });
+  }
+  while (out.length && out[0].role !== "user") out.shift();
+  // Faqat oxirgi rasmli xabardagi rasmlar yuboriladi (tez va arzon), oldingilari matn bilan almashtiriladi
+  let seen = false;
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (!out[i].images.length) continue;
+    if (seen) { out[i].content = "[foydalanuvchi rasm yuborgan edi]\n" + out[i].content; out[i].images = []; }
+    seen = true;
+  }
+  return out;
+}
+const hasImages = (msgs) => msgs.some((m) => m.images.length);
+
+// Provayder formatiga o'tkazish
+function toWire(kind, msgs, withImages) {
+  return msgs.map((m) => {
+    if (!withImages || !m.images.length) {
+      const text = m.images.length ? "[foydalanuvchi rasm yubordi, lekin bu model rasmni ko'ra olmaydi]\n" + m.content : m.content;
+      return { role: m.role, content: text || "…" };
+    }
+    if (kind === "anthropic") {
+      return {
+        role: m.role,
+        content: [
+          ...m.images.map((u) => {
+            const [, mt, data] = /^data:([^;]+);base64,(.*)$/s.exec(u) || [];
+            return { type: "image", source: { type: "base64", media_type: mt, data } };
+          }),
+          { type: "text", text: m.content || "Bu rasmda nima bor?" },
+        ],
+      };
+    }
+    return {
+      role: m.role,
+      content: [{ type: "text", text: m.content || "Bu rasmda nima bor?" }, ...m.images.map((u) => ({ type: "image_url", image_url: { url: u } }))],
+    };
+  });
+}
+
+async function openStream(p, key, model, wire, system, maxTokens) {
   const base = baseOf(p);
-  const maxTokens = Number(env("MAX_TOKENS")) || 4096;
+  maxTokens = maxTokens || Number(env("MAX_TOKENS")) || 4096;
   let url, headers, body;
   if (p.kind === "anthropic") {
     url = `${base}/messages`;
     headers = { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" };
-    body = { model, max_tokens: maxTokens, system: SYSTEM, messages, stream: true };
+    body = { model, max_tokens: maxTokens, system, messages: wire, stream: true };
   } else {
     url = `${base}/chat/completions`;
     headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Qurbonov AI" };
-    body = { model, max_tokens: maxTokens, stream: true, messages: [{ role: "system", content: SYSTEM }, ...messages] };
+    body = { model, max_tokens: maxTokens, stream: true, messages: [{ role: "system", content: system }, ...wire] };
   }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), Number(env("WAIT_MS")) || 12000); // javob 12 s da boshlanmasa — keyingisiga
   let resp;
   try {
-    resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
+    // javob 12 s ichida boshlanmasa — keyingi modelga
+    resp = await withTimeout(Number(env("WAIT_MS")) || 12000, (signal) => fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal }));
   } catch {
     throw new PErr("busy", "javob kelmadi");
-  } finally {
-    clearTimeout(timer);
   }
   if (resp.ok && resp.body) return resp;
   try { await resp.body?.cancel(); } catch { /* */ }
   throw classify(resp.status);
 }
 
-// Ketma-ket bir xil rollarni birlashtirish, birinchisi 'user' bo'lishi
-function clean(messages) {
-  const out = [];
-  for (const m of messages || []) {
-    const role = m.role === "assistant" ? "assistant" : "user";
-    const content = String(m.content || "");
-    if (!content.trim()) continue;
-    if (out.length && out[out.length - 1].role === role) out[out.length - 1].content += "\n\n" + content;
-    else out.push({ role, content });
+// Asosiy navbat: ishlaydigan birinchi model oqimini qaytaradi
+async function runChat(msgs, { mode = "auto", avoid = [], system = SYSTEM, maxTokens } = {}) {
+  const vision = hasImages(msgs);
+  let ids = order().filter((id) => keysOf(PROVIDERS[id]).length);
+  const av = new Set(avoid);
+  ids = [...ids.filter((id) => !av.has(id)), ...ids.filter((id) => av.has(id))];
+  if (mode && mode !== "auto" && ids.includes(mode)) ids = [mode, ...ids.filter((id) => id !== mode)];
+
+  // Rasm bo'lsa: avval rasmni ko'ra oladigan modellar, keyin (zaxira) qolganlari rasmsiz
+  const plan = [];
+  if (vision) {
+    for (const pid of ids) if (PROVIDERS[pid].vision) plan.push({ pid, models: PROVIDERS[pid].vision(PROVIDERS[pid]), images: true });
+    for (const pid of ids) plan.push({ pid, models: modelsOf(PROVIDERS[pid]), images: false });
+  } else {
+    for (const pid of ids) plan.push({ pid, models: modelsOf(PROVIDERS[pid]), images: false });
   }
-  while (out.length && out[0].role !== "user") out.shift();
-  return out;
+
+  const skipped = [];
+  for (const step of plan) {
+    const p = PROVIDERS[step.pid];
+    const keys = keysOf(p);
+    const wire = toWire(p.kind, msgs, step.images);
+    for (let ki = 0; ki < keys.length; ki++) {
+      const key = keys[ki];
+      const queue = [...step.models];
+      let extended = step.images; // rasmli rejimda boshqa modellarni qidirmaymiz
+      for (let i = 0; i < queue.length; i++) {
+        const model = queue[i];
+        try {
+          const upstream = await openStream(p, key, model, wire, system, maxTokens);
+          return { upstream, pid: step.pid, p, model, skipped, sawImage: step.images };
+        } catch (e) {
+          const kind = e.kind || "other";
+          skipped.push({ pid: step.pid, name: model + (keys.length > 1 ? ` (kalit ${ki + 1})` : ""), kind, short: SHORT[kind], reason: e.message });
+          if (kind === "auth") break;
+          if (kind !== "other" && !extended && env("AUTO_MODEL") !== "0") {
+            extended = true;
+            const extra = (await discover(step.pid, p, key)).filter((m) => !queue.includes(m)).slice(0, kind === "notfound" ? 3 : 1);
+            queue.push(...extra);
+          }
+        }
+      }
+    }
+  }
+  const err = new Error(ids.length
+    ? "Hech bir model javob bera olmadi: " + skipped.map((s) => `${s.name} — ${s.reason}`).join("; ")
+    : "Hali birorta API kalit qo'yilmagan. Netlify → Environment variables ga kalit qo'shing.");
+  err.skipped = skipped;
+  throw err;
 }
 
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
-
-function authorized(req) {
-  const pass = env("APP_PASSWORD");
-  return !pass || req.headers.get("x-qai-pass") === pass;
+// SSE oqimini o'qib, matn bo'laklarini beradi (OpenAI va Anthropic formatlari)
+async function* sseText(body, kind) {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let n;
+    while ((n = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, n).trim();
+      buf = buf.slice(n + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const j = JSON.parse(data);
+        const t = kind === "anthropic" ? (j.type === "content_block_delta" ? j.delta?.text : "") : j.choices?.[0]?.delta?.content;
+        if (t) yield t;
+      } catch { /* qisman qator */ }
+    }
+  }
 }
 
-// ================= RASM YARATISH =================
-// 1) Cloudflare Workers AI (FLUX) — CF_ACCOUNT_ID + CF_API_TOKEN, kuniga ~170 ta tekin
-// 2) Pollinations — zaxira (POLLINATIONS_API_KEY ixtiyoriy)
-
-function toBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
+// Ekrandagi kichkina yordamchi (Yulduz, Nilufar, Temur) nomidan gapirish
+function personaHint(p) {
+  if (!p || typeof p !== "object") return "";
+  const name = String(p.name || "").slice(0, 40), trait = String(p.trait || "").slice(0, 300);
+  if (!name) return "";
+  return `\n\nHozir sen ekrandagi kichkina anime-yordamchi "${name}" qiyofasidasan. Xaraktering: ${trait}. ` +
+    `O'zingni "${name}" deb tanishtir, shu xarakterda gapir, lekin baribir foydali va aniq javob ber.`;
 }
 
-const IMAGE_PROVIDERS = [
-  { id: "cloudflare", name: "Cloudflare FLUX", ready: () => !!(env("CF_ACCOUNT_ID") && env("CF_API_TOKEN")) },
-  { id: "pollinations", name: "Pollinations", ready: () => env("POLLINATIONS") !== "0" },
-];
+async function handleChat(req) {
+  let input;
+  try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
+  const msgs = clean(input.messages);
+  if (!msgs.length) return json({ detail: "Bo'sh xabar" }, 400);
+  try {
+    const r = await runChat(msgs, {
+      mode: input.mode,
+      avoid: Array.isArray(input.avoid) ? input.avoid : [],
+      system: SYSTEM + (input.voice ? VOICE_HINT : "") + personaHint(input.persona),
+      maxTokens: input.voice ? 600 : undefined,
+    });
+    return new Response(r.upstream.body, {
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        "x-qai-provider": r.pid,
+        "x-qai-name": r.p.name,
+        "x-qai-model": encodeURIComponent(r.model),
+        "x-qai-format": r.p.kind,
+        "x-qai-vision": r.sawImage ? "1" : "0",
+        "x-qai-skipped": encodeURIComponent(JSON.stringify(r.skipped)),
+      },
+    });
+  } catch (e) {
+    return json({ detail: e.message, skipped: e.skipped || [] }, 503);
+  }
+}
 
-// Rasm modellari inglizcha tavsifni yaxshi tushunadi — avval tez chat modeli bilan tarjima qilamiz
-async function toEnglishPrompt(text) {
-  if (env("TRANSLATE_PROMPT") === "0") return text;
+// ================= RASM =================
+// Chizish: Cloudflare FLUX (kuniga ~170 ta tekin) → Pollinations (zaxira)
+// Tahrirlash: Cloudflare FLUX.2 klein (biriktirilgan rasm asosida)
+
+const cfReady = () => !!(env("CF_ACCOUNT_ID") && env("CF_API_TOKEN"));
+const cfUrl = (model) => `${env("CF_BASE_URL") || "https://api.cloudflare.com/client/v4"}/accounts/${env("CF_ACCOUNT_ID")}/ai/run/${model}`;
+
+async function quickLLM(system, text, maxTokens = 220) {
   for (const pid of order()) {
     const p = PROVIDERS[pid];
     const key = keysOf(p)[0];
     if (!key || p.kind !== "openai") continue;
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(`${baseOf(p)}/chat/completions`, {
-        method: "POST", signal: ctrl.signal,
+      const r = await withTimeout(8000, (signal) => fetch(`${baseOf(p)}/chat/completions`, {
+        method: "POST", signal,
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: modelsOf(p)[0], max_tokens: 200, stream: false,
-          messages: [
-            { role: "system", content: "Translate the user's image request into one detailed English prompt for an image generator. Output ONLY the prompt, no quotes, no explanations." },
-            { role: "user", content: text },
-          ],
-        }),
-      });
-      clearTimeout(t);
+        body: JSON.stringify({ model: modelsOf(p)[0], max_tokens: maxTokens, stream: false, messages: [{ role: "system", content: system }, { role: "user", content: text }] }),
+      }));
       if (!r.ok) continue;
       const out = (await r.json()).choices?.[0]?.message?.content?.trim();
       if (out) return out.replace(/^["']|["']$/g, "").slice(0, 900);
     } catch { /* keyingisi */ }
   }
-  return text;
+  return null;
 }
 
-async function genCloudflare(prompt) {
-  const model = env("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell";
-  const r = await fetch(`${env("CF_BASE_URL") || "https://api.cloudflare.com/client/v4"}/accounts/${env("CF_ACCOUNT_ID")}/ai/run/${model}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, steps: 4 }),
-  });
+const toEnglishPrompt = async (text, edit) => env("TRANSLATE_PROMPT") === "0" ? text : (await quickLLM(edit
+  ? "Rewrite the user's image EDIT instruction as one short, clear English instruction for an image editing model (e.g. 'Make the sky purple, keep everything else the same'). Output ONLY the instruction."
+  : "Translate the user's image request into one detailed English prompt for an image generator. Output ONLY the prompt, no quotes, no explanations.", text)) || text;
+
+async function readCfImage(r) {
   if (!r.ok) throw classify(r.status);
   const ct = r.headers.get("content-type") || "";
   if (ct.startsWith("image/")) return `data:${ct};base64,${toBase64(await r.arrayBuffer())}`;
   const d = await r.json();
-  const b64 = d.result?.image;
+  const b64 = d.result?.image || d.image;
   if (!b64) throw new PErr("other", "rasm qaytmadi");
-  return `data:image/jpeg;base64,${b64}`;
+  return b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
+}
+
+async function genCloudflare(prompt) {
+  const r = await fetch(cfUrl(env("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, steps: 4 }),
+  });
+  return readCfImage(r);
+}
+
+async function editCloudflare(prompt, images) {
+  const form = new FormData();
+  form.append("prompt", prompt);
+  images.slice(0, 4).forEach((u, i) => { const b = dataUrlToBlob(u); if (b) form.append(`input_image_${i}`, b, `image_${i}.jpg`); });
+  form.append("width", "1024");
+  form.append("height", "1024");
+  const r = await fetch(cfUrl(env("CF_EDIT_MODEL") || "@cf/black-forest-labs/flux-2-klein-4b"), {
+    method: "POST", headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}` }, body: form,
+  });
+  return readCfImage(r);
 }
 
 async function genPollinations(prompt) {
@@ -191,10 +372,8 @@ async function genPollinations(prompt) {
   const url = key
     ? `https://gen.pollinations.ai/image/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`
     : `https://image.pollinations.ai/prompt/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 35000);
   try {
-    const r = await fetch(url, { signal: ctrl.signal, headers: key ? { Authorization: `Bearer ${key}` } : {} });
+    const r = await withTimeout(35000, (signal) => fetch(url, { signal, headers: key ? { Authorization: `Bearer ${key}` } : {} }));
     if (!r.ok) throw classify(r.status);
     const ct = r.headers.get("content-type") || "image/jpeg";
     if (!ct.startsWith("image/")) throw new PErr("other", "rasm qaytmadi");
@@ -202,102 +381,358 @@ async function genPollinations(prompt) {
   } catch (e) {
     if (e instanceof PErr) throw e;
     throw new PErr("busy", "javob kelmadi");
-  } finally { clearTimeout(t); }
+  }
 }
 
 async function handleImage(req) {
   let input;
   try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
   const text = String(input.prompt || "").trim().slice(0, 1500);
+  const images = Array.isArray(input.images) ? input.images.filter((u) => /^data:image\//.test(u)) : [];
   if (!text) return json({ detail: "Rasm tavsifini yozing" }, 400);
-  const prompt = await toEnglishPrompt(text);
+  const edit = images.length > 0;
+  const prompt = await toEnglishPrompt(text, edit);
   const skipped = [];
-  for (const ip of IMAGE_PROVIDERS) {
-    if (!ip.ready()) continue;
+  const steps = edit
+    ? [{ id: "cloudflare", name: "Cloudflare FLUX.2", ok: cfReady(), run: () => editCloudflare(prompt, images) }]
+    : [
+        { id: "cloudflare", name: "Cloudflare FLUX", ok: cfReady(), run: () => genCloudflare(prompt) },
+        { id: "pollinations", name: "Pollinations", ok: env("POLLINATIONS") !== "0", run: () => genPollinations(prompt) },
+      ];
+  for (const s of steps) {
+    if (!s.ok) continue;
     try {
-      const image = ip.id === "cloudflare" ? await genCloudflare(prompt) : await genPollinations(prompt);
-      return json({ image, provider: ip.name, prompt, skipped });
+      return json({ image: await s.run(), provider: s.name, prompt, edit, skipped });
     } catch (e) {
-      skipped.push({ pid: ip.id, name: ip.name, kind: e.kind || "other", short: SHORT[e.kind] || "xato", reason: e.message });
+      skipped.push({ pid: s.id, name: s.name, kind: e.kind || "other", short: SHORT[e.kind] || "xato", reason: e.message });
     }
   }
-  return json({ detail: "Rasm yaratib bo'lmadi: " + (skipped.map((s) => `${s.name} — ${s.reason}`).join("; ") || "rasm xizmati ulanmagan"), skipped }, 503);
+  const why = skipped.map((s) => `${s.name} — ${s.reason}`).join("; ") ||
+    (edit ? "rasm tahrirlash uchun Cloudflare (CF_ACCOUNT_ID, CF_API_TOKEN) kerak" : "rasm xizmati ulanmagan");
+  return json({ detail: (edit ? "Rasmni tahrirlab bo'lmadi: " : "Rasm yaratib bo'lmadi: ") + why, skipped }, 503);
 }
 
-// ---------- Asosiy ----------
+// ================= OVOZ =================
+const aishaReady = () => !!env("AISHA_API_KEY");
+const AISHA = () => env("AISHA_BASE_URL") || "https://back.aisha.group";
+
+async function sttAisha(blob, lang) {
+  const form = new FormData();
+  form.append("audio", blob, "voice.wav");
+  form.append("language", lang);
+  form.append("has_diarization", "false");
+  const r = await withTimeout(30000, (signal) => fetch(`${AISHA()}/api/v1/stt/post/`, { method: "POST", signal, headers: { "X-Api-Key": env("AISHA_API_KEY") }, body: form }));
+  if (!r.ok) throw classify(r.status);
+  const d = await r.json();
+  return String(d.transcript ?? d.text ?? "").trim();
+}
+
+async function sttGroq(blob, lang) {
+  const p = PROVIDERS.groq;
+  const key = keysOf(p)[0];
+  const form = new FormData();
+  form.append("file", blob, "voice.wav");
+  form.append("model", env("STT_MODEL") || "whisper-large-v3-turbo");
+  form.append("response_format", "json");
+  if (lang) form.append("language", lang);
+  const r = await withTimeout(30000, (signal) => fetch(`${baseOf(p)}/audio/transcriptions`, { method: "POST", signal, headers: { Authorization: `Bearer ${key}` }, body: form }));
+  if (!r.ok) throw classify(r.status);
+  return String((await r.json()).text || "").trim();
+}
+
+async function sttCloudflare(blob, lang) {
+  const audio = toBase64(await blob.arrayBuffer());
+  const r = await withTimeout(30000, (signal) => fetch(cfUrl("@cf/openai/whisper-large-v3-turbo"), {
+    method: "POST", signal,
+    headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ audio, language: lang }),
+  }));
+  if (!r.ok) throw classify(r.status);
+  const d = await r.json();
+  return String(d.result?.text || "").trim();
+}
+
+async function handleSTT(req) {
+  let form;
+  try { form = await req.formData(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
+  const blob = form.get("audio");
+  const lang = String(form.get("lang") || "uz");
+  if (!(blob instanceof Blob) || !blob.size) return json({ detail: "Ovoz yozilmadi" }, 400);
+  const steps = [
+    { name: "Aisha", ok: aishaReady(), run: () => sttAisha(blob, lang) },
+    { name: "Groq Whisper", ok: keysOf(PROVIDERS.groq).length > 0, run: () => sttGroq(blob, lang) },
+    { name: "Cloudflare Whisper", ok: cfReady(), run: () => sttCloudflare(blob, lang) },
+  ];
+  const skipped = [];
+  for (const s of steps) {
+    if (!s.ok) continue;
+    try { return json({ text: await s.run(), provider: s.name }); }
+    catch (e) { skipped.push(`${s.name} — ${e.message || "xato"}`); }
+  }
+  return json({ detail: "Ovozni matnga aylantirib bo'lmadi: " + (skipped.join("; ") || "ovoz xizmati ulanmagan (GROQ yoki AISHA kaliti kerak)") }, 503);
+}
+
+// Azure AI Speech — Microsoft'ning tiniq "Neural" ovozlari (uz-UZ-MadinaNeural, uz-UZ-SardorNeural).
+// Tekin tarif (F0): oyiga 500 000 belgi. AZURE_SPEECH_KEY + AZURE_SPEECH_REGION kerak.
+const azureReady = () => !!(env("AZURE_SPEECH_KEY") && env("AZURE_SPEECH_REGION"));
+const AZ_VOICES = {
+  uz: (m) => m ? env("AZURE_VOICE_MALE") || "uz-UZ-SardorNeural" : env("AZURE_VOICE") || "uz-UZ-MadinaNeural",
+  ru: (m) => m ? "ru-RU-DmitryNeural" : "ru-RU-SvetlanaNeural",
+  en: (m) => m ? "en-US-GuyNeural" : "en-US-AriaNeural",
+};
+const xml = (t) => t.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]));
+
+async function ttsAzure(text, lang, male) {
+  const voice = AZ_VOICES[lang](male);
+  const locale = voice.split("-").slice(0, 2).join("-");
+  const ssml = `<speak version='1.0' xml:lang='${locale}'><voice name='${voice}'><prosody rate='${env("AZURE_RATE") || "+4%"}'>${xml(text)}</prosody></voice></speak>`;
+  const r = await withTimeout(25000, (signal) => fetch(env("AZURE_TTS_URL") || `https://${env("AZURE_SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: "POST", signal,
+    headers: {
+      "Ocp-Apim-Subscription-Key": env("AZURE_SPEECH_KEY"),
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+      "User-Agent": "qurbonov-ai",
+    },
+    body: ssml,
+  }));
+  if (!r.ok) throw classify(r.status);
+  return `data:audio/mpeg;base64,${toBase64(await r.arrayBuffer())}`;
+}
+
+// ElevenLabs (Eleven v3 o'zbekchani qo'llaydi). Bepul tarif oyiga ~10 000 belgi — tugasa Azure'ga o'tadi.
+const elevenReady = () => !!env("ELEVENLABS_API_KEY");
+async function ttsEleven(text, male) {
+  const voice = male ? env("ELEVENLABS_VOICE_MALE") || "JBFqnCBsd6RMkjVDRZzb" : env("ELEVENLABS_VOICE") || "EXAVITQu4vr4xnSDxMaL";
+  const r = await withTimeout(30000, (signal) => fetch(`${env("ELEVENLABS_BASE_URL") || "https://api.elevenlabs.io"}/v1/text-to-speech/${voice}?output_format=mp3_44100_64`, {
+    method: "POST", signal,
+    headers: { "xi-api-key": env("ELEVENLABS_API_KEY"), "content-type": "application/json", accept: "audio/mpeg" },
+    body: JSON.stringify({ text, model_id: env("ELEVENLABS_MODEL") || "eleven_v3" }),
+  }));
+  if (!r.ok) throw classify(r.status);
+  return `data:audio/mpeg;base64,${toBase64(await r.arrayBuffer())}`;
+}
+
+async function handleTTS(req) {
+  let input;
+  try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
+  const text = String(input.text || "").trim().slice(0, 1000);
+  const lang = ["uz", "ru", "en"].includes(input.lang) ? input.lang : "uz";
+  if (!text) return json({ detail: "Bo'sh matn" }, 400);
+  if (elevenReady()) {
+    try { return json({ url: await ttsEleven(text, input.gender === "male"), provider: "ElevenLabs" }); }
+    catch { /* limit tugagan bo'lsa Azure'ga o'tamiz */ }
+  }
+  if (azureReady()) {
+    try { return json({ url: await ttsAzure(text, lang, input.gender === "male"), provider: "Azure" }); }
+    catch { /* Aisha yoki brauzerga o'tamiz */ }
+  }
+  if (!aishaReady()) return json({ detail: "Ovoz xizmati ulanmagan", fallback: true }, 501);
+  const form = new FormData();
+  form.append("transcript", text);
+  form.append("language", lang);
+  if (lang === "uz") {
+    form.append("model", env("AISHA_VOICE") || "Gulnoza");
+    form.append("mood", env("AISHA_MOOD") || "Neutral");
+  }
+  try {
+    const r = await withTimeout(30000, (signal) => fetch(`${AISHA()}/api/v1/tts/post/`, { method: "POST", signal, headers: { "X-Api-Key": env("AISHA_API_KEY") }, body: form }));
+    if (!r.ok) {
+      const e = classify(r.status);
+      return json({ detail: "Aisha: " + (e.kind === "limit" ? "balans tugagan" : e.message), fallback: true }, 502);
+    }
+    const d = await r.json();
+    const path = d.audio_path || d.audio || d.url;
+    if (!path) return json({ detail: "Aisha audio qaytarmadi", fallback: true }, 502);
+    return json({ url: path.startsWith("http") ? path : AISHA() + path, provider: "Aisha" });
+  } catch {
+    return json({ detail: "Aisha javob bermadi", fallback: true }, 504);
+  }
+}
+
+// ================= HAMROH (Shinobu) =================
+// Gapni tushunib, nima deyish, qanday his qilish va nima qilishni JSON qilib qaytaradi.
+const ACTIONS = ["none", "go_edge", "go_left", "go_right", "go_center", "come_closer", "sit", "stand", "sleep", "wake", "dance",
+  "yawn", "wave", "turn_away", "turn_back", "eat", "hug", "cry", "cheer", "game_tir", "game_rps", "game_hearts", "joke"];
+const EMOTIONS = ["neutral", "happy", "love", "shy", "sad", "cry", "angry", "surprised", "sleepy", "relaxed"];
+
+function companionSystem(c) {
+  const s = c.state || {};
+  return `Sen ${c.name} — foydalanuvchi ekranida yashaydigan kichkina 3D anime qizsan (tirik hamroh, tamagotchi kabi).
+Xarakteringiz: ${c.trait}
+Sen haqiqiy qizdek his qilasan: quvonasan, uyalasan, xafa bo'lasan, yig'laysan, jahling chiqadi, arazlaysan, och qolasan, uyqung keladi.
+Foydalanuvchi — ${c.owner || "egang"}. U bilan o'zbek tilida, jonli, qisqa (1–3 gap) gaplash. Markdown va emoji ishlatma.
+
+HOZIRGI HOLATING (0–100): ochlik=${s.hunger}, charchoq=${100 - (s.energy ?? 100)}, kayfiyat=${s.mood}, mehr=${s.affection}.
+${s.sleeping ? "Hozir uxlab yotgan eding, uyg'otishdi." : ""}${s.sulking ? " Sen hozir ARAZLAB turibsan (xafa qilishgan yoki e'tiborsiz qoldirishgan). Sovg'a yoki chin dildan kechirim so'ralmaguncha sovuq javob ber." : ""}
+${s.hunger > 70 ? "Qorning juda och — buni aytib qo'y." : ""}${(s.energy ?? 100) < 25 ? " Uyqung kelyapti — esnab, ko'rpa yoki yostiq so'ra." : ""}
+Vaqt: ${s.time || ""}. Oxirgi sovg'alar: ${s.gifts || "yo'q"}.
+
+Qoidalar:
+- Agar foydalanuvchi qo'pol gapirsa, haqoratlasa yoki xafa qilsa — xafa bo'l yoki yig'la (emotion: sad yoki cry), insult=true, mood_delta manfiy.
+- Maqtasa, mehr ko'rsatsa — uyal yoki quvon (shy/love), mood_delta musbat.
+- "Chekkaga o'tib tur", "to'syapsan", "berkitib qo'ydingiz" desa — go_edge. "Chapga/o'ngga o't" — go_left/go_right. "O'rtaga kel" — go_center. "Yonimga kel" — come_closer.
+- "Uxla", "men uxlayman sen ham uxla" — esnab rozi bo'l, action=sleep. "Tur", "uyg'on" — wake.
+- "Raqsga tush" — dance. "O'ynaymiz", "zerikdim" — o'yin taklif qil (game_tir, game_rps yoki game_hearts) yoki hazil ayt (joke).
+- "Zerikdim", "kuldir" — kulgili hazil yoki qiziq gap ayt (action joke).
+- Har doim xarakteringda qol, lekin foydali savolga aniq javob ber.
+
+FAQAT shu JSON bilan javob ber (boshqa hech narsa yozma):
+{"say":"aytadigan gaping","emotion":"${EMOTIONS.join("|")}","action":"${ACTIONS.join("|")}","mood_delta":0,"insult":false}`;
+}
+
+async function handleCompanion(req) {
+  let input;
+  try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
+  const c = input.companion || {};
+  const history = (Array.isArray(input.history) ? input.history : []).slice(-10)
+    .map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "").slice(0, 600) }));
+  const text = String(input.text || "").slice(0, 1000);
+  if (!text) return json({ detail: "Bo'sh" }, 400);
+  const msgs = clean([...history, { role: "user", content: text }]);
+  let raw = "";
+  try {
+    const r = await runChat(msgs, { system: companionSystem({ name: String(c.name || "Shinobu").slice(0, 40), trait: String(c.trait || "").slice(0, 400), owner: String(c.owner || "").slice(0, 40), state: c.state || {} }), maxTokens: 400 });
+    for await (const t of sseText(r.upstream.body, r.p.kind)) raw += t;
+  } catch (e) {
+    return json({ detail: e.message }, 503);
+  }
+  let out = null;
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) { try { out = JSON.parse(m[0]); } catch { /* */ } }
+  if (!out || typeof out.say !== "string") out = { say: raw.replace(/[{}"]/g, "").trim().slice(0, 400) || "Hmm…", emotion: "neutral", action: "none" };
+  return json({
+    say: String(out.say).replace(/[*_#`]/g, "").slice(0, 500),
+    emotion: EMOTIONS.includes(out.emotion) ? out.emotion : "neutral",
+    action: ACTIONS.includes(out.action) ? out.action : "none",
+    mood_delta: Math.max(-30, Math.min(30, Number(out.mood_delta) || 0)),
+    insult: !!out.insult,
+  });
+}
+
+// ================= ULAGICHLAR: OpenAI-mos API =================
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+};
+
+function apiKeyOk(req) {
+  const allowed = list(env("API_KEY") || env("APP_PASSWORD"));
+  if (!allowed.length) return null; // kalit o'rnatilmagan
+  const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  return allowed.includes(got);
+}
+
+function normalizeOpenAI(messages) {
+  const sys = [];
+  const msgs = [];
+  for (const m of messages || []) {
+    let text = "";
+    const images = [];
+    if (typeof m.content === "string") text = m.content;
+    else if (Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (part.type === "text") text += (text ? "\n" : "") + part.text;
+        else if (part.type === "image_url") {
+          const u = typeof part.image_url === "string" ? part.image_url : part.image_url?.url;
+          if (u?.startsWith("data:image/")) images.push(u);
+        }
+      }
+    }
+    if (m.role === "system" || m.role === "developer") sys.push(text);
+    else msgs.push({ role: m.role, content: text, images });
+  }
+  return { system: sys.join("\n\n"), messages: msgs };
+}
+
+async function handleV1(req, path) {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const ok = apiKeyOk(req);
+  if (ok === null) return json({ error: { message: "Netlify'da API_KEY o'rnatilmagan", type: "auth" } }, 403, CORS);
+  if (!ok) return json({ error: { message: "API kalit noto'g'ri", type: "auth" } }, 401, CORS);
+
+  if (path === "/v1/models") {
+    const data = [{ id: "qurbonov-ai", object: "model", owned_by: "qurbonov" }];
+    for (const id of order()) if (keysOf(PROVIDERS[id]).length) data.push({ id: `qurbonov-ai/${id}`, object: "model", owned_by: "qurbonov" });
+    return json({ object: "list", data }, 200, CORS);
+  }
+  if (path !== "/v1/chat/completions" || req.method !== "POST") return json({ error: { message: "Topilmadi" } }, 404, CORS);
+
+  let input;
+  try { input = await req.json(); } catch { return json({ error: { message: "Noto'g'ri JSON" } }, 400, CORS); }
+  const { system, messages } = normalizeOpenAI(input.messages);
+  const msgs = clean(messages);
+  if (!msgs.length) return json({ error: { message: "messages bo'sh" } }, 400, CORS);
+  const want = String(input.model || "qurbonov-ai").replace(/^qurbonov-ai\/?/, "") || "auto";
+
+  let r;
+  try {
+    r = await runChat(msgs, { mode: want, system: system ? SYSTEM + "\n\n" + system : SYSTEM, maxTokens: input.max_tokens || input.max_completion_tokens });
+  } catch (e) {
+    return json({ error: { message: e.message, type: "unavailable" } }, 503, CORS);
+  }
+  const id = "chatcmpl-" + crypto.randomUUID();
+  const created = Math.floor(Date.now() / 1000);
+  const modelName = `qurbonov-ai/${r.pid}/${r.model}`;
+  const extra = { ...CORS, "x-qai-provider": r.pid, "x-qai-model": encodeURIComponent(r.model) };
+
+  if (input.stream) {
+    const enc = new TextEncoder();
+    const chunk = (delta, finish = null) =>
+      enc.encode(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: modelName, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
+    const stream = new ReadableStream({
+      async start(c) {
+        c.enqueue(chunk({ role: "assistant", content: "" }));
+        try { for await (const t of sseText(r.upstream.body, r.p.kind)) c.enqueue(chunk({ content: t })); } catch { /* uzildi */ }
+        c.enqueue(chunk({}, "stop"));
+        c.enqueue(enc.encode("data: [DONE]\n\n"));
+        c.close();
+      },
+    });
+    return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...extra } });
+  }
+
+  let text = "";
+  for await (const t of sseText(r.upstream.body, r.p.kind)) text += t;
+  return json({
+    id, object: "chat.completion", created, model: modelName,
+    choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  }, 200, extra);
+}
+
+// ================= Marshrutlar =================
 export default async (req) => {
-  const path = new URL(req.url).pathname;
+  const path = new URL(req.url).pathname.replace(/\/+$/, "");
+
+  if (path.startsWith("/v1/")) return handleV1(req, path);
 
   if (path === "/api/providers") {
     return json({
       needPass: !!env("APP_PASSWORD"),
       authorized: authorized(req),
-      image: IMAGE_PROVIDERS.filter((p) => p.ready()).map((p) => p.name),
+      features: {
+        image: cfReady() || env("POLLINATIONS") !== "0",
+        edit: cfReady(),
+        vision: order().some((id) => PROVIDERS[id].vision && keysOf(PROVIDERS[id]).length),
+        stt: aishaReady() || keysOf(PROVIDERS.groq).length > 0 || cfReady(),
+        tts: elevenReady() ? "elevenlabs" : azureReady() ? "azure" : aishaReady() ? "aisha" : "browser",
+        api: !!(env("API_KEY") || env("APP_PASSWORD")),
+      },
       providers: order().map((id) => ({ id, name: PROVIDERS[id].name, model: modelsOf(PROVIDERS[id]).join(", "), configured: keysOf(PROVIDERS[id]).length > 0 })),
     });
   }
 
-  if (path === "/api/image" && req.method === "POST") {
-    if (!authorized(req)) return json({ detail: "Parol noto'g'ri" }, 401);
-    return handleImage(req);
-  }
-
-  if (path !== "/api/chat" || req.method !== "POST") return json({ detail: "Topilmadi" }, 404);
+  if (req.method !== "POST") return json({ detail: "Topilmadi" }, 404);
   if (!authorized(req)) return json({ detail: "Parol noto'g'ri" }, 401);
 
-  let input;
-  try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
-  const messages = clean(input.messages);
-  if (!messages.length) return json({ detail: "Bo'sh xabar" }, 400);
-
-  // Navbat: tanlangan model birinchi, "dam olayotganlar" oxirida
-  let ids = order().filter((id) => keysOf(PROVIDERS[id]).length);
-  const avoid = new Set(Array.isArray(input.avoid) ? input.avoid : []);
-  ids = [...ids.filter((id) => !avoid.has(id)), ...ids.filter((id) => avoid.has(id))];
-  if (input.mode && input.mode !== "auto" && ids.includes(input.mode)) ids = [input.mode, ...ids.filter((id) => id !== input.mode)];
-
-  const skipped = [];
-  for (const pid of ids) {
-    const p = PROVIDERS[pid];
-    const keys = keysOf(p);
-    for (let ki = 0; ki < keys.length; ki++) {
-      const key = keys[ki];
-      const queue = [...modelsOf(p)];
-      let extended = false;
-      for (let i = 0; i < queue.length; i++) {
-        const model = queue[i];
-        try {
-          const upstream = await openStream(p, key, model, messages);
-          return new Response(upstream.body, {
-            headers: {
-              "content-type": "text/event-stream; charset=utf-8",
-              "cache-control": "no-cache",
-              "x-qai-provider": pid,
-              "x-qai-name": p.name,
-              "x-qai-model": encodeURIComponent(model),
-              "x-qai-format": p.kind,
-              "x-qai-skipped": encodeURIComponent(JSON.stringify(skipped)),
-            },
-          });
-        } catch (e) {
-          const kind = e.kind || "other";
-          skipped.push({ pid, name: model + (keys.length > 1 ? ` (kalit ${ki + 1})` : ""), kind, short: SHORT[kind], reason: e.message });
-          if (kind === "auth") break;                       // bu kalit yaroqsiz — keyingi kalitga
-          // limit ko'pincha model bo'yicha — shu kalitning boshqa modeli ishlashi mumkin
-          if (kind !== "auth" && kind !== "other" && !extended && env("AUTO_MODEL") !== "0") {
-            extended = true;                                // mavjud modellardan eng yaxshilarini qo'shamiz
-            const extra = (await discover(pid, p, key)).filter((m) => !queue.includes(m)).slice(0, kind === "notfound" ? 3 : 1);
-            queue.push(...extra);
-          }
-        }
-      }
-    }
-  }
-
-  const detail = ids.length
-    ? "Hech bir model javob bera olmadi: " + skipped.map((s) => `${s.name} — ${s.reason}`).join("; ")
-    : "Hali birorta API kalit qo'yilmagan. Netlify → Site configuration → Environment variables ga kalit qo'shing.";
-  return json({ detail, skipped }, 503);
+  if (path === "/api/chat") return handleChat(req);
+  if (path === "/api/image") return handleImage(req);
+  if (path === "/api/stt") return handleSTT(req);
+  if (path === "/api/tts") return handleTTS(req);
+  if (path === "/api/companion") return handleCompanion(req);
+  return json({ detail: "Topilmadi" }, 404);
 };
 
-export const config = { path: "/api/*" };
+export const config = { path: ["/api/*", "/v1/*"] };

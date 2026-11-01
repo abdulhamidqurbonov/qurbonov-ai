@@ -62,7 +62,8 @@ PROVIDERS = {p.id: p for p in [
     Provider("gemini", "Gemini", "openai", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_MODEL", "gemini-3.8-flash,gemini-flash-lite-latest", "GEMINI_API_KEY"),
     Provider("cerebras", "Cerebras", "openai", "https://api.cerebras.ai/v1", "CEREBRAS_MODEL", "llama-3.3-70b", "CEREBRAS_API_KEY"),
     Provider("mistral", "Mistral", "openai", "https://api.mistral.ai/v1", "MISTRAL_MODEL", "mistral-small-latest", "MISTRAL_API_KEY"),
-    Provider("openrouter", "OpenRouter", "openai", "https://openrouter.ai/api/v1", "OPENROUTER_MODEL", "openrouter/auto", "OPENROUTER_API_KEY"),
+    Provider("openrouter", "OpenRouter", "openai", "https://openrouter.ai/api/v1", "OPENROUTER_MODEL", "openrouter/free", "OPENROUTER_API_KEY"),
+    Provider("qwen", "Qwen", "openai", "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1", "QWEN_MODEL", "qwen3.8-max", "QWEN_API_KEY"),
     Provider("claude", "Claude", "anthropic", "https://api.anthropic.com/v1", "CLAUDE_MODEL", "claude-sonnet-5-5", "ANTHROPIC_API_KEY"),
     Provider("deepseek", "DeepSeek", "openai", "https://api.deepseek.com/v1", "DEEPSEEK_MODEL", "deepseek-chat", "DEEPSEEK_API_KEY"),
     Provider("openai", "ChatGPT", "openai", "https://api.openai.com/v1", "OPENAI_MODEL", "gpt-4o-mini", "OPENAI_API_KEY"),
@@ -70,7 +71,7 @@ PROVIDERS = {p.id: p for p in [
 
 
 def ordered_providers() -> list[Provider]:
-    ids = split(env("PROVIDER_ORDER", "groq,gemini,cerebras,mistral,openrouter,claude,deepseek,openai"))
+    ids = split(env("PROVIDER_ORDER", "groq,gemini,openrouter,qwen,cerebras,mistral,claude,deepseek,openai"))
     return [PROVIDERS[i] for i in ids if i in PROVIDERS]
 
 

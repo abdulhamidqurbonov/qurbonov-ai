@@ -75,3 +75,14 @@ python run.py
 - **Limitga tushgan model** 10 daqiqa navbat oxiriga suriladi (pastda 🟡).
 - **Suhbatlar** brauzeringizda saqlanadi (boshqa telefon/kompyuterda ko'rinmaydi).
 - **To'xtatish:** javob yozilayotganda ⏹ tugmasi yoki Esc. **Yangi suhbat:** Ctrl+K.
+
+---
+
+## Shinobu Oshino (3D hamroh)
+
+- Bossangiz tinglaydi, gapingizni tushunadi: "chekkaga o'tib tur", "uxla", "raqsga tush", "o'ynaymiz"...
+- Och qoladi, uyqusi keladi, so'raydi; bermasangiz baqiradi va arazlaydi. Sovg'a (gul, ayiqcha, shirinlik, ko'rpa, yostiq) bilan yarashasiz.
+- O'yinlar: Tir, Tosh-qaychi-qog'oz, Yurakcha ushlash.
+- Batareya kamaysa ogohlantiradi (Chrome/Edge'da).
+- Sichqoncha ustiga olib borsangiz kichik menyu chiqadi (sovg'a, o'yin, yozish, sozlama).
+- Model: `public/models/vampira.vrm` (VRoid → VRM 1.0). Boshqa model qo'yish uchun `public/companion.js` dagi `PET` ni o'zgartiring.
