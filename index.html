@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c0f">
+  <title>Qurbonov AI</title>
+  <link rel="icon" href="/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===== Chap panel ===== -->
+  <aside class="side" id="side">
+    <div class="side-top">
+      <a class="brand" href="/" aria-label="Qurbonov AI">
+        <img src="/logo.svg" alt="">
+        <span>Qurbonov <b>AI</b></span>
+      </a>
+      <button class="icon-btn only-mobile" id="closeSide" aria-label="Yopish">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <button class="new-btn" id="newBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Yangi suhbat</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <nav class="chat-list" id="chatList"></nav>
+
+    <div class="side-foot">
+      <div class="status" id="status"></div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ===== Asosiy ===== -->
+  <main class="main">
+    <header class="top">
+      <button class="icon-btn only-mobile" id="openSide" aria-label="Menyu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
+      </button>
+      <h1 id="title">Yangi suhbat</h1>
+      <button class="icon-btn only-mobile" id="newBtn2" aria-label="Yangi suhbat">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+
+    <section class="feed" id="feed"></section>
+
+    <div class="dock">
+      <form class="composer" id="form" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Xabar yozing…"></textarea>
+        <div class="composer-row">
+          <div class="picker">
+            <button type="button" class="chip" id="pickerBtn" aria-haspopup="true">
+              <i class="dot" id="pickerDot"></i>
+              <span id="pickerLabel">Avto</span>
+              <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>
+            </button>
+            <div class="menu" id="menu" hidden></div>
+          </div>
+          <button type="button" class="chip img-chip" id="imgBtn" title="Rasm chizish (/rasm)">
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M20 16l-5-5-8.5 8.5"/></svg>
+            <span>Rasm</span>
+          </button>
+          <span class="hint"><b>/rasm</b> — rasm rejimi · <b>/groq</b>, <b>/gemini</b>, <b>/avto</b> — model · Enter — yuborish</span>
+          <button type="submit" class="send" id="sendBtn" aria-label="Yuborish">
+            <svg class="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <svg class="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+          </button>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<!-- Parol oynasi -->
+<div class="gate" id="gate" hidden>
+  <form class="gate-card" id="gateForm">
+    <img src="/logo.svg" alt="">
+    <h2>Qurbonov AI</h2>
+    <p>Davom etish uchun parolni kiriting</p>
+    <input type="password" id="gatePass" placeholder="Parol" autocomplete="current-password">
+    <button type="submit">Kirish</button>
+    <small id="gateErr"></small>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
