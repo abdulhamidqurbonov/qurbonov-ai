@@ -1,0 +1,4 @@
+# Netlify sozlamasi — hech narsani o'zgartirish shart emas
+[build]
+  publish = "public"
+  edge_functions = "netlify/edge-functions"
