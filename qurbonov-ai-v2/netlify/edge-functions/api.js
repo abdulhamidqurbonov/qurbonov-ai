@@ -9,10 +9,11 @@ const list = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 const PROVIDERS = {
   groq:       { name: "Groq",       kind: "openai",    base: "https://api.groq.com/openai/v1",                          modelEnv: "GROQ_MODEL",       def: "openai/gpt-oss-120b",                    keyEnv: "GROQ_API_KEY" },
-  gemini:     { name: "Gemini",     kind: "openai",    base: "https://generativelanguage.googleapis.com/v1beta/openai", modelEnv: "GEMINI_MODEL",     def: "gemini-3.8-flash,gemini-flash-lite-latest", keyEnv: "GEMINI_API_KEY" },
+  gemini:     { name: "Gemini",     kind: "openai",    base: "https://generativelanguage.googleapis.com/v1beta/openai", modelEnv: "GEMINI_MODEL",     def: "gemini-flash-lite-latest,gemini-3.8-flash", keyEnv: "GEMINI_API_KEY" },
   cerebras:   { name: "Cerebras",   kind: "openai",    base: "https://api.cerebras.ai/v1",                              modelEnv: "CEREBRAS_MODEL",   def: "llama-3.3-70b",                          keyEnv: "CEREBRAS_API_KEY" },
   mistral:    { name: "Mistral",    kind: "openai",    base: "https://api.mistral.ai/v1",                               modelEnv: "MISTRAL_MODEL",    def: "mistral-small-latest",                   keyEnv: "MISTRAL_API_KEY" },
-  openrouter: { name: "OpenRouter", kind: "openai",    base: "https://openrouter.ai/api/v1",                            modelEnv: "OPENROUTER_MODEL", def: "openrouter/auto",                        keyEnv: "OPENROUTER_API_KEY" },
+  openrouter: { name: "OpenRouter", kind: "openai",    base: "https://openrouter.ai/api/v1",                            modelEnv: "OPENROUTER_MODEL", def: "openrouter/free",                        keyEnv: "OPENROUTER_API_KEY" },
+  qwen:       { name: "Qwen",       kind: "openai",    base: "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1", modelEnv: "QWEN_MODEL", def: "qwen3.8-max",                  keyEnv: "QWEN_API_KEY" },
   claude:     { name: "Claude",     kind: "anthropic", base: "https://api.anthropic.com/v1",                            modelEnv: "CLAUDE_MODEL",     def: "claude-sonnet-5-5",                      keyEnv: "ANTHROPIC_API_KEY" },
   deepseek:   { name: "DeepSeek",   kind: "openai",    base: "https://api.deepseek.com/v1",                             modelEnv: "DEEPSEEK_MODEL",   def: "deepseek-chat",                          keyEnv: "DEEPSEEK_API_KEY" },
   openai:     { name: "ChatGPT",    kind: "openai",    base: "https://api.openai.com/v1",                               modelEnv: "OPENAI_MODEL",     def: "gpt-4o-mini",                            keyEnv: "OPENAI_API_KEY" },
@@ -23,7 +24,7 @@ const baseOf = (p) => env(p.keyEnv.replace("_API_KEY", "_BASE_URL")) || p.base; 
 const modelsOf = (p) => list(env(p.modelEnv) || p.def);
 
 function order() {
-  const ids = list(env("PROVIDER_ORDER") || "groq,gemini,cerebras,mistral,openrouter,claude,deepseek,openai");
+  const ids = list(env("PROVIDER_ORDER") || "groq,gemini,openrouter,qwen,cerebras,mistral,claude,deepseek,openai");
   return ids.filter((id) => PROVIDERS[id]);
 }
 
@@ -85,7 +86,7 @@ async function openStream(p, key, model, messages) {
     body = { model, max_tokens: maxTokens, stream: true, messages: [{ role: "system", content: SYSTEM }, ...messages] };
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000); // javob boshlanmasa — 30 s da keyingisiga
+  const timer = setTimeout(() => ctrl.abort(), Number(env("WAIT_MS")) || 12000); // javob 12 s da boshlanmasa — keyingisiga
   let resp;
   try {
     resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
@@ -121,6 +122,108 @@ function authorized(req) {
   return !pass || req.headers.get("x-qai-pass") === pass;
 }
 
+// ================= RASM YARATISH =================
+// 1) Cloudflare Workers AI (FLUX) — CF_ACCOUNT_ID + CF_API_TOKEN, kuniga ~170 ta tekin
+// 2) Pollinations — zaxira (POLLINATIONS_API_KEY ixtiyoriy)
+
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+const IMAGE_PROVIDERS = [
+  { id: "cloudflare", name: "Cloudflare FLUX", ready: () => !!(env("CF_ACCOUNT_ID") && env("CF_API_TOKEN")) },
+  { id: "pollinations", name: "Pollinations", ready: () => env("POLLINATIONS") !== "0" },
+];
+
+// Rasm modellari inglizcha tavsifni yaxshi tushunadi — avval tez chat modeli bilan tarjima qilamiz
+async function toEnglishPrompt(text) {
+  if (env("TRANSLATE_PROMPT") === "0") return text;
+  for (const pid of order()) {
+    const p = PROVIDERS[pid];
+    const key = keysOf(p)[0];
+    if (!key || p.kind !== "openai") continue;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(`${baseOf(p)}/chat/completions`, {
+        method: "POST", signal: ctrl.signal,
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelsOf(p)[0], max_tokens: 200, stream: false,
+          messages: [
+            { role: "system", content: "Translate the user's image request into one detailed English prompt for an image generator. Output ONLY the prompt, no quotes, no explanations." },
+            { role: "user", content: text },
+          ],
+        }),
+      });
+      clearTimeout(t);
+      if (!r.ok) continue;
+      const out = (await r.json()).choices?.[0]?.message?.content?.trim();
+      if (out) return out.replace(/^["']|["']$/g, "").slice(0, 900);
+    } catch { /* keyingisi */ }
+  }
+  return text;
+}
+
+async function genCloudflare(prompt) {
+  const model = env("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell";
+  const r = await fetch(`${env("CF_BASE_URL") || "https://api.cloudflare.com/client/v4"}/accounts/${env("CF_ACCOUNT_ID")}/ai/run/${model}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, steps: 4 }),
+  });
+  if (!r.ok) throw classify(r.status);
+  const ct = r.headers.get("content-type") || "";
+  if (ct.startsWith("image/")) return `data:${ct};base64,${toBase64(await r.arrayBuffer())}`;
+  const d = await r.json();
+  const b64 = d.result?.image;
+  if (!b64) throw new PErr("other", "rasm qaytmadi");
+  return `data:image/jpeg;base64,${b64}`;
+}
+
+async function genPollinations(prompt) {
+  const key = env("POLLINATIONS_API_KEY");
+  const q = encodeURIComponent(prompt);
+  const seed = Math.floor(Math.random() * 1e9);
+  const url = key
+    ? `https://gen.pollinations.ai/image/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`
+    : `https://image.pollinations.ai/prompt/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 35000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: key ? { Authorization: `Bearer ${key}` } : {} });
+    if (!r.ok) throw classify(r.status);
+    const ct = r.headers.get("content-type") || "image/jpeg";
+    if (!ct.startsWith("image/")) throw new PErr("other", "rasm qaytmadi");
+    return `data:${ct};base64,${toBase64(await r.arrayBuffer())}`;
+  } catch (e) {
+    if (e instanceof PErr) throw e;
+    throw new PErr("busy", "javob kelmadi");
+  } finally { clearTimeout(t); }
+}
+
+async function handleImage(req) {
+  let input;
+  try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
+  const text = String(input.prompt || "").trim().slice(0, 1500);
+  if (!text) return json({ detail: "Rasm tavsifini yozing" }, 400);
+  const prompt = await toEnglishPrompt(text);
+  const skipped = [];
+  for (const ip of IMAGE_PROVIDERS) {
+    if (!ip.ready()) continue;
+    try {
+      const image = ip.id === "cloudflare" ? await genCloudflare(prompt) : await genPollinations(prompt);
+      return json({ image, provider: ip.name, prompt, skipped });
+    } catch (e) {
+      skipped.push({ pid: ip.id, name: ip.name, kind: e.kind || "other", short: SHORT[e.kind] || "xato", reason: e.message });
+    }
+  }
+  return json({ detail: "Rasm yaratib bo'lmadi: " + (skipped.map((s) => `${s.name} — ${s.reason}`).join("; ") || "rasm xizmati ulanmagan"), skipped }, 503);
+}
+
 // ---------- Asosiy ----------
 export default async (req) => {
   const path = new URL(req.url).pathname;
@@ -129,8 +232,14 @@ export default async (req) => {
     return json({
       needPass: !!env("APP_PASSWORD"),
       authorized: authorized(req),
+      image: IMAGE_PROVIDERS.filter((p) => p.ready()).map((p) => p.name),
       providers: order().map((id) => ({ id, name: PROVIDERS[id].name, model: modelsOf(PROVIDERS[id]).join(", "), configured: keysOf(PROVIDERS[id]).length > 0 })),
     });
+  }
+
+  if (path === "/api/image" && req.method === "POST") {
+    if (!authorized(req)) return json({ detail: "Parol noto'g'ri" }, 401);
+    return handleImage(req);
   }
 
   if (path !== "/api/chat" || req.method !== "POST") return json({ detail: "Topilmadi" }, 404);

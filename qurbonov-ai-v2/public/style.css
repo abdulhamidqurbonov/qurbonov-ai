@@ -200,6 +200,14 @@ kbd { font: 500 10.5px 'JetBrains Mono', monospace; color: var(--faint); border:
 .opt .t { flex: 1; min-width: 0; }
 .opt b { display: block; font-size: 13.5px; font-weight: 600; }
 .opt small { display: block; font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.img-chip svg { width: 15px; height: 15px; color: var(--dim); }
+.img-chip.on { background: var(--acc-soft); border-color: rgba(244, 181, 68, .55); color: var(--acc); }
+.img-chip.on svg { color: var(--acc); }
+.gen { display: block; width: min(100%, 460px); aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: var(--raise); border: 1px solid var(--line); margin-top: 4px; }
+.gen img { width: 100%; height: 100%; object-fit: cover; display: block; animation: rise .35s ease; }
+.gen.loading { display: grid; place-items: center; background: linear-gradient(110deg, var(--raise) 30%, var(--raise-2) 50%, var(--raise) 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.gen.lost { display: grid; place-items: center; aspect-ratio: auto; padding: 18px; font-size: 13px; color: var(--faint); }
+@keyframes shimmer { to { background-position: -200% 0; } }
 .menu-foot { font-size: 11.5px; color: var(--faint); padding: 8px 10px 6px; border-top: 1px solid var(--line); margin-top: 4px; }
 .hint b { font-weight: 600; color: var(--dim); }
 .opt .tick { color: var(--acc); visibility: hidden; }
@@ -234,6 +242,7 @@ kbd { font: 500 10.5px 'JetBrains Mono', monospace; color: var(--faint); border:
   .dock { padding: 0 10px calc(10px + env(safe-area-inset-bottom)); }
   .composer { border-radius: 18px; padding: 10px 10px 8px 14px; }
   .hint { visibility: hidden; }
+  .img-chip span { display: none; }
   .ideas { grid-template-columns: 1fr; }
   .hello { padding-top: 6vh; }
   .hello h2 { font-size: 23px; }

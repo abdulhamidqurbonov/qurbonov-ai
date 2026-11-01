@@ -11,6 +11,8 @@ const ICON = {
   redo: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>',
   swap: '<svg viewBox="0 0 24 24"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',
   tick: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  img: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M20 16l-5-5-8.5 8.5"/></svg>',
+  dl: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>',
 }
 
 // ---------- Saqlash (brauzerda) ----------
@@ -28,10 +30,22 @@ const S = {
   pass: store.get('pass', ''),
   busy: false,
   ctrl: null,
+  imageMode: false,
+  imageReady: [],
 }
 const MAX_HISTORY = 60000
 
-const save = () => store.set('chats', S.chats.slice(0, 200))
+function save() {
+  S.chats = S.chats.slice(0, 200)
+  for (let tries = 0; tries < 60; tries++) {
+    try { localStorage.setItem('qai.chats', JSON.stringify(S.chats)); return } catch { /* joy tugadi */ }
+    // Joy tugasa — eng eski rasmlarni xotiradan olib tashlaymiz (matni qoladi)
+    let dropped = false
+    for (let c = S.chats.length - 1; c >= 0 && !dropped; c--)
+      for (const m of S.chats[c].messages) if (m.image) { m.image = null; m.lost = true; dropped = true; break }
+    if (!dropped) return
+  }
+}
 const active = () => S.chats.find((c) => c.id === S.activeId)
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 
@@ -58,6 +72,7 @@ async function loadProviders() {
     const r = await fetch('/api/providers', { headers: { 'x-qai-pass': S.pass } })
     const d = await r.json()
     S.providers = d.providers || []
+    S.imageReady = d.image || []
     if (d.needPass && !d.authorized) showGate()
   } catch { S.providers = [] }
   renderStatus(); renderPicker()
@@ -120,6 +135,7 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.picker')) $(
 
 // Buyruqlar: /avto, /groq, /gemini ...
 function command(text) {
+  if (/^\/rasm\s*$/i.test(text)) { setImageMode(!S.imageMode); return true }
   const m = text.match(/^\/(\S+)\s*$/); if (!m) return false
   const name = m[1].toLowerCase()
   if (['avto', 'auto'].includes(name)) { setMode('auto'); return true }
@@ -136,6 +152,7 @@ const IDEAS = [
   ['Tarjima', "Quyidagi matnni rus tiliga chiroyli tarjima qil:"],
   ["G'oya", "Toshkentda kichik sarmoya bilan qanday biznes boshlasa bo'ladi?"],
 ]
+const IMAGE_RE = /^(\/rasm\s+|rasm\s+chiz\s*[:\-]?\s*|rasm\s*:\s*)/i
 
 function hello() {
   const none = S.providers.length && !configured().length
@@ -151,6 +168,15 @@ function hello() {
 function msgHTML(m, i) {
   if (m.role === 'user') return `<div class="msg user"><div class="body">${esc(m.content)}</div></div>`
   const sw = m.note ? `<div class="switch">${ICON.swap}<span>${esc(m.note)} → <b>${esc(m.provider)}</b></span></div>` : ''
+  if (m.kind === 'image') {
+    const pic = m.image
+      ? `<a class="gen" href="${m.image}" target="_blank" rel="noopener"><img src="${m.image}" alt="${esc(m.prompt || '')}" loading="lazy"></a>`
+      : `<div class="gen lost">Rasm xotira to'lgani uchun saqlanmadi</div>`
+    return `<div class="msg ai"><div class="ava"><img src="/logo.svg" alt=""></div><div class="wrap">${sw}${pic}
+      <div class="meta"><span class="who">${esc(m.provider || '')}</span>
+        ${m.image ? `<button data-dl="${i}" title="Yuklab olish">${ICON.dl}</button>` : ''}
+        <button data-redo="${i}" title="Qayta chizish">${ICON.redo}</button></div></div></div>`
+  }
   return `<div class="msg ai"><div class="ava"><img src="/logo.svg" alt=""></div><div class="wrap">${sw}
     <div class="md">${md(m.content)}</div>
     <div class="meta"><span class="who">${esc(m.provider || '')}${m.model ? ' · ' + esc(m.model) : ''}</span>
@@ -188,7 +214,7 @@ function history(msgs) {
   for (let i = msgs.length - 1; i >= 0; i--) {
     total += msgs[i].content.length
     if (total > MAX_HISTORY && out.length) break
-    out.unshift({ role: msgs[i].role, content: msgs[i].content })
+    out.unshift({ role: msgs[i].role, content: msgs[i].content })   // rasm xabarida content — qisqa tavsif
   }
   return out
 }
@@ -208,17 +234,57 @@ async function send(textArg) {
   if (!text) return
   if (command(text)) { input.value = ''; autosize(); return }
   if (textArg === undefined) { input.value = ''; autosize() }
+  const imgMatch = text.match(IMAGE_RE)
+  const isImage = S.imageMode || !!imgMatch
+  const prompt = imgMatch ? text.slice(imgMatch[0].length).trim() : text
+  if (isImage && !prompt) { toast('Rasm tavsifini yozing'); return }
 
   let chat = active()
   if (!chat) {
     chat = { id: uid(), title: text.replace(/[*#`]/g, '').replace(/\s+/g, ' ').slice(0, 42), updated: Date.now(), messages: [] }
     S.chats.unshift(chat); S.activeId = chat.id
   }
-  chat.messages.push({ role: 'user', content: text })
+  chat.messages.push(isImage && !imgMatch ? { role: 'user', content: text, img: true } : { role: 'user', content: text })
   chat.updated = Date.now()
   S.chats = [chat, ...S.chats.filter((c) => c.id !== chat.id)]
   save(); renderList()
-  await ask(chat)
+  if (isImage) await draw(chat, prompt)
+  else await ask(chat)
+}
+
+// ---------- Rasm ----------
+function setImageMode(on) {
+  S.imageMode = on
+  $('imgBtn').classList.toggle('on', on)
+  $('input').placeholder = on ? "Rasm tavsifini yozing… (masalan: tog'da quyosh botishi)" : 'Xabar yozing…'
+  toast(on ? 'Rasm rejimi yoqildi 🎨' : 'Chat rejimi')
+  $('input').focus()
+}
+
+async function draw(chat, prompt) {
+  setBusy(true)
+  renderFeed(`<div class="msg ai"><div class="ava"><img src="/logo.svg" alt=""></div><div class="wrap">
+    <div class="gen loading"><div class="thinking"><div class="dots"><i></i><i></i><i></i></div>Rasm chizilyapti…</div></div></div></div>`)
+  const ctrl = new AbortController(); S.ctrl = ctrl
+  try {
+    const res = await fetch('/api/image', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'content-type': 'application/json', 'x-qai-pass': S.pass },
+      body: JSON.stringify({ prompt }),
+    })
+    if (res.status === 401) { showGate(); throw new Error("Parol noto'g'ri — qayta kiriting") }
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(d.detail || `Xato ${res.status}`)
+    const note = (d.skipped || []).map((s) => `${s.name} ${s.short}`).join(', ')
+    finish(chat, { role: 'assistant', kind: 'image', image: d.image, prompt, provider: d.provider, note,
+      content: `[Rasm yaratildi: ${prompt}]` })
+  } catch (err) {
+    setBusy(false)
+    if (err.name === 'AbortError') { renderFeed(); return }
+    if (S.activeId === chat.id) renderFeed(`<div class="err"><span>✕ ${esc(err.message)}</span><button data-retry>Qayta urinish</button></div>`)
+  } finally {
+    if (S.ctrl === ctrl) S.ctrl = null
+  }
 }
 
 async function ask(chat, attempt = 0) {
@@ -350,14 +416,30 @@ $('feed').addEventListener('click', async (e) => {
     await navigator.clipboard.writeText(pre.parentElement.querySelector('code')?.innerText || '')
     pre.textContent = 'Olindi ✓'; setTimeout(() => (pre.textContent = 'Nusxa'), 1200); return
   }
+  const dl = e.target.closest('[data-dl]')
+  if (dl) {
+    const m = active()?.messages[+dl.dataset.dl]; if (!m?.image) return
+    const a = document.createElement('a'); a.href = m.image
+    a.download = 'qurbonov-ai-' + Date.now() + (m.image.startsWith('data:image/png') ? '.png' : '.jpg'); a.click(); return
+  }
   const redo = e.target.closest('[data-redo]')
   if (redo && !S.busy) {
     const c = active(); const i = +redo.dataset.redo
-    c.messages = c.messages.slice(0, i); save(); ask(c); return
+    const old = c.messages[i]
+    c.messages = c.messages.slice(0, i); save()
+    if (old?.kind === 'image') draw(c, old.prompt); else ask(c)
+    return
   }
-  if (e.target.closest('[data-retry]') && !S.busy) { const c = active(); if (c) ask(c) }
+  if (e.target.closest('[data-retry]') && !S.busy) {
+    const c = active(); if (!c) return
+    const last = c.messages[c.messages.length - 1]
+    const mm = last?.content.match(IMAGE_RE)
+    if (last?.role === 'user' && (mm || last.img)) draw(c, mm ? last.content.slice(mm[0].length).trim() : last.content)
+    else ask(c)
+  }
 })
 
+$('imgBtn').addEventListener('click', () => setImageMode(!S.imageMode))
 $('newBtn').addEventListener('click', newChat)
 $('newBtn2').addEventListener('click', newChat)
 const closeSide = () => { $('side').classList.remove('open'); $('scrim').classList.remove('open') }
