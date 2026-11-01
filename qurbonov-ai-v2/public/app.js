@@ -555,15 +555,15 @@ function stopSpeaking() {
   try { speechSynthesis.cancel() } catch { /* */ }
   document.querySelectorAll('[data-speak].on').forEach((b) => { b.classList.remove('on'); b.innerHTML = ICON.speak })
 }
-async function ttsUrl(text, gender) {
+async function ttsUrl(text, gender, style) {
   if (!S.features.tts || S.features.tts === 'browser') return null
   try {
-    const r = await fetch('/api/tts', { method: 'POST', headers: H(), body: JSON.stringify({ text, lang: langOf(text), gender }) })
+    const r = await fetch('/api/tts', { method: 'POST', headers: H(), body: JSON.stringify({ text, lang: langOf(text), gender, style }) })
     const d = await r.json().catch(() => ({}))
     return r.ok && d.url ? d.url : null
   } catch { return null }
 }
-function browserSpeak(text, token, gender) {
+function browserSpeak(text, token, gender, style) {
   return new Promise((res) => {
     if (!('speechSynthesis' in window)) return res()
     const u = new SpeechSynthesisUtterance(text)
@@ -582,21 +582,22 @@ function browserSpeak(text, token, gender) {
     u.lang = u.voice?.lang || (lang === 'uz' ? 'uz-UZ' : 'ru-RU')
     u.rate = 1.02
     if (gender === 'male' && !u.voice?.name.match(/sardor|male|dmitry|guy/i)) u.pitch = 0.85
+    if (style === 'anime') { u.pitch = 1.55; u.rate = 1.08 }   // Shinobu: ingichka, yosh qiz ovozi
     u.onend = u.onerror = () => res()
     if (token !== speaker.token) return res()
     speechSynthesis.speak(u)
   })
 }
-async function speak(text, { onStart, gender } = {}) {
+async function speak(text, { onStart, gender, style } = {}) {
   stopSpeaking()
   const token = speaker.token
   const parts = chunksOf(plain(text))
   if (!parts.length) return
-  let next = ttsUrl(parts[0], gender)
+  let next = ttsUrl(parts[0], gender, style)
   for (let i = 0; i < parts.length; i++) {
     if (token !== speaker.token) return
     const url = await next
-    if (i + 1 < parts.length) next = ttsUrl(parts[i + 1], gender)   // keyingisini oldindan tayyorlaymiz
+    if (i + 1 < parts.length) next = ttsUrl(parts[i + 1], gender, style)   // keyingisini oldindan tayyorlaymiz
     if (token !== speaker.token) return
     if (i === 0) onStart?.()
     if (url) {
@@ -606,7 +607,7 @@ async function speak(text, { onStart, gender } = {}) {
         a.play().catch(() => res())
       })
     } else {
-      await browserSpeak(parts[i], token, gender)
+      await browserSpeak(parts[i], token, gender, style)
     }
   }
 }

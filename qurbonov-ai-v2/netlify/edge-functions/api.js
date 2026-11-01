@@ -482,10 +482,10 @@ const AZ_VOICES = {
 };
 const xml = (t) => t.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]));
 
-async function ttsAzure(text, lang, male) {
+async function ttsAzure(text, lang, male, anime) {
   const voice = AZ_VOICES[lang](male);
   const locale = voice.split("-").slice(0, 2).join("-");
-  const ssml = `<speak version='1.0' xml:lang='${locale}'><voice name='${voice}'><prosody rate='${env("AZURE_RATE") || "+4%"}'>${xml(text)}</prosody></voice></speak>`;
+  const ssml = `<speak version='1.0' xml:lang='${locale}'><voice name='${voice}'><prosody ${anime ? `pitch='${env("AZURE_PET_PITCH") || "+22%"}' rate='${env("AZURE_PET_RATE") || "+8%"}'` : `rate='${env("AZURE_RATE") || "+4%"}'`}>${xml(text)}</prosody></voice></speak>`;
   const r = await withTimeout(25000, (signal) => fetch(env("AZURE_TTS_URL") || `https://${env("AZURE_SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: "POST", signal,
     headers: {
@@ -502,8 +502,8 @@ async function ttsAzure(text, lang, male) {
 
 // ElevenLabs (Eleven v3 o'zbekchani qo'llaydi). Bepul tarif oyiga ~10 000 belgi — tugasa Azure'ga o'tadi.
 const elevenReady = () => !!env("ELEVENLABS_API_KEY");
-async function ttsEleven(text, male) {
-  const voice = male ? env("ELEVENLABS_VOICE_MALE") || "JBFqnCBsd6RMkjVDRZzb" : env("ELEVENLABS_VOICE") || "EXAVITQu4vr4xnSDxMaL";
+async function ttsEleven(text, male, anime) {
+  const voice = anime ? env("ELEVENLABS_PET_VOICE") : male ? env("ELEVENLABS_VOICE_MALE") || "JBFqnCBsd6RMkjVDRZzb" : env("ELEVENLABS_VOICE") || "EXAVITQu4vr4xnSDxMaL";
   const r = await withTimeout(30000, (signal) => fetch(`${env("ELEVENLABS_BASE_URL") || "https://api.elevenlabs.io"}/v1/text-to-speech/${voice}?output_format=mp3_44100_64`, {
     method: "POST", signal,
     headers: { "xi-api-key": env("ELEVENLABS_API_KEY"), "content-type": "application/json", accept: "audio/mpeg" },
@@ -519,12 +519,13 @@ async function handleTTS(req) {
   const text = String(input.text || "").trim().slice(0, 1000);
   const lang = ["uz", "ru", "en"].includes(input.lang) ? input.lang : "uz";
   if (!text) return json({ detail: "Bo'sh matn" }, 400);
-  if (elevenReady()) {
-    try { return json({ url: await ttsEleven(text, input.gender === "male"), provider: "ElevenLabs" }); }
+  const anime = input.style === "anime"; // Shinobu: yosh anime qiz ovozi
+  if (elevenReady() && (!anime || env("ELEVENLABS_PET_VOICE"))) {
+    try { return json({ url: await ttsEleven(text, input.gender === "male", anime), provider: "ElevenLabs" }); }
     catch { /* limit tugagan bo'lsa Azure'ga o'tamiz */ }
   }
   if (azureReady()) {
-    try { return json({ url: await ttsAzure(text, lang, input.gender === "male"), provider: "Azure" }); }
+    try { return json({ url: await ttsAzure(text, lang, input.gender === "male", anime), provider: "Azure" }); }
     catch { /* Aisha yoki brauzerga o'tamiz */ }
   }
   if (!aishaReady()) return json({ detail: "Ovoz xizmati ulanmagan", fallback: true }, 501);
