@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c0f">
+  <title>Qurbonov AI</title>
+  <link rel="icon" href="/logo.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===== Chap panel ===== -->
+  <aside class="side" id="side">
+    <div class="side-top">
+      <a class="brand" href="/" aria-label="Qurbonov AI">
+        <img src="/logo.svg" alt="">
+        <span>Qurbonov <b>AI</b></span>
+      </a>
+      <button class="icon-btn only-mobile" id="closeSide" aria-label="Yopish">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <button class="new-btn" id="newBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Yangi suhbat</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <nav class="chat-list" id="chatList"></nav>
+
+    <div class="side-foot">
+      <button class="link-btn buddy-btn" id="buddyBtn">
+        <i class="bt-face"></i>
+        <span>Yordamchi</span>
+      </button>
+      <button class="link-btn" id="connBtn">
+        <svg viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5"/></svg>
+        <span>Ulagichlar</span>
+        <small>Unity, Python…</small>
+      </button>
+      <div class="status" id="status"></div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ===== Asosiy ===== -->
+  <main class="main" id="main">
+    <header class="top">
+      <button class="icon-btn only-mobile" id="openSide" aria-label="Menyu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
+      </button>
+      <h1 id="title">Yangi suhbat</h1>
+      <button class="icon-btn only-mobile" id="newBtn2" aria-label="Yangi suhbat">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+
+    <section class="feed" id="feed"></section>
+
+    <div class="dock">
+      <form class="composer" id="form" autocomplete="off">
+        <div class="tray" id="tray" hidden></div>
+        <div class="rec" id="rec" hidden>
+          <i class="rec-dot"></i><span id="recTime">0:00</span>
+          <canvas id="recWave" width="240" height="28"></canvas>
+          <button type="button" class="rec-x" id="recCancel" title="Bekor qilish">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <textarea id="input" rows="1" placeholder="Xabar yozing yoki rasm yuklang…"></textarea>
+        <div class="composer-row">
+          <div class="picker">
+            <button type="button" class="chip" id="pickerBtn" aria-haspopup="true">
+              <i class="dot" id="pickerDot"></i>
+              <span id="pickerLabel">Avto</span>
+              <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>
+            </button>
+            <div class="menu" id="menu" hidden></div>
+          </div>
+          <button type="button" class="tool" id="attachBtn" title="Rasm yuklash">
+            <svg viewBox="0 0 24 24"><path d="M20.5 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>
+          </button>
+          <input type="file" id="file" accept="image/*" multiple hidden>
+          <span class="grow"></span>
+          <button type="button" class="tool" id="micBtn" title="Ovozli xabar">
+            <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          </button>
+          <button type="button" class="tool voice-tool" id="voiceBtn" title="Ovozli suhbat">
+            <svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+          </button>
+          <button type="submit" class="send" id="sendBtn" aria-label="Yuborish">
+            <svg class="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <svg class="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+          </button>
+        </div>
+      </form>
+    </div>
+    <div class="drop" id="drop" hidden><div>Rasmni shu yerga tashlang</div></div>
+  </main>
+</div>
+
+<!-- ===== Ovozli suhbat (ekran ustida) ===== -->
+<div class="voice" id="voice" hidden>
+  <button class="voice-x" id="voiceClose" aria-label="Yopish">
+    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <div class="voice-body">
+    <button class="orb" id="orb" aria-label="Gapirish">
+      <span class="orb-core"></span><span class="orb-ring r1"></span><span class="orb-ring r2"></span>
+    </button>
+    <div class="voice-state" id="voiceState">Tayyorlanyapman…</div>
+    <div class="voice-said" id="voiceSaid"></div>
+    <div class="voice-reply" id="voiceReply"></div>
+  </div>
+  <div class="voice-bar">
+    <button class="vbtn" id="voiceMute" title="Mikrofonni o'chirish">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+    </button>
+    <button class="vbtn end" id="voiceEnd" title="Tugatish">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- ===== Ulagichlar ===== -->
+<div class="modal" id="conn" hidden>
+  <div class="sheet">
+    <div class="sheet-h">
+      <div>
+        <h3>Ulagichlar</h3>
+        <p>Qurbonov AI'ni Unity, Python, Telegram bot va boshqa ilovalarga ulang. Format — OpenAI bilan bir xil.</p>
+      </div>
+      <button class="icon-btn" id="connClose" aria-label="Yopish"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="kv">
+      <span>Base URL</span><code id="connUrl"></code><button class="mini" data-copy-text="#connUrl">Nusxa</button>
+      <span>Model</span><code>qurbonov-ai</code><span></span>
+      <span>Kalit</span><code>Netlify'dagi API_KEY</code><span></span>
+    </div>
+    <div class="warn-box small" id="connWarn" hidden>⚠ Netlify'da <b>API_KEY</b> o'rnatilmagan. Environment variables → <b>API_KEY</b> = o'zingiz o'ylagan uzun kalit qo'shing.</div>
+    <div class="tabs" id="connTabs"></div>
+    <pre class="code" id="connCode"></pre>
+    <button class="copy-big" id="connCopy">Kodni nusxalash</button>
+  </div>
+</div>
+
+<!-- Parol oynasi -->
+<div class="gate" id="gate" hidden>
+  <form class="gate-card" id="gateForm">
+    <img src="/logo.svg" alt="">
+    <h2>Qurbonov AI</h2>
+    <p>Davom etish uchun parolni kiriting</p>
+    <input type="password" id="gatePass" placeholder="Parol" autocomplete="current-password">
+    <button type="submit">Kirish</button>
+    <small id="gateErr"></small>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="importmap">{ "imports": { "three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/" } }</script>
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/app.js"></script>
+<script src="/buddy-art.js"></script>
+<script src="/buddy.js"></script>
+<script type="module" src="/avatar3d.js"></script>
+</body>
+</html>
