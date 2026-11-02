@@ -485,7 +485,7 @@ const xml = (t) => t.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&"
 async function ttsAzure(text, lang, male, anime) {
   const voice = AZ_VOICES[lang](male);
   const locale = voice.split("-").slice(0, 2).join("-");
-  const ssml = `<speak version='1.0' xml:lang='${locale}'><voice name='${voice}'><prosody ${anime ? `pitch='${env("AZURE_PET_PITCH") || "+22%"}' rate='${env("AZURE_PET_RATE") || "+8%"}'` : `rate='${env("AZURE_RATE") || "+4%"}'`}>${xml(text)}</prosody></voice></speak>`;
+  const ssml = `<speak version='1.0' xml:lang='${locale}'><voice name='${voice}'><prosody ${anime ? `pitch='${env("AZURE_PET_PITCH") || "+8%"}' rate='${env("AZURE_PET_RATE") || "+6%"}'` : `rate='${env("AZURE_RATE") || "+4%"}'`}>${xml(text)}</prosody></voice></speak>`;
   const r = await withTimeout(25000, (signal) => fetch(env("AZURE_TTS_URL") || `https://${env("AZURE_SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: "POST", signal,
     headers: {

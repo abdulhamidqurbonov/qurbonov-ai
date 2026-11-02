@@ -582,7 +582,7 @@ function browserSpeak(text, token, gender, style) {
     u.lang = u.voice?.lang || (lang === 'uz' ? 'uz-UZ' : 'ru-RU')
     u.rate = 1.02
     if (gender === 'male' && !u.voice?.name.match(/sardor|male|dmitry|guy/i)) u.pitch = 0.85
-    if (style === 'anime') { u.pitch = 1.55; u.rate = 1.08 }   // Shinobu: ingichka, yosh qiz ovozi
+    if (style === 'anime') { u.pitch = 1.25; u.rate = 1.06 }   // Shinobu: ingichka, yosh qiz ovozi
     u.onend = u.onerror = () => res()
     if (token !== speaker.token) return res()
     speechSynthesis.speak(u)
