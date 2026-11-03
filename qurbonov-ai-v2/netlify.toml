@@ -3,6 +3,11 @@
   publish = "public"
   edge_functions = "netlify/edge-functions"
 
+# Maxfiy bo'lmagan sozlamalar (model nomlari, ovoz tanlovi, region) — kod ichida ham uchraydi, tekshiruv ularni kalit deb o'ylamasin
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "OPENROUTER_MODEL,GROQ_MODEL,GEMINI_MODEL,QWEN_MODEL,CEREBRAS_MODEL,MISTRAL_MODEL,CLAUDE_MODEL,DEEPSEEK_MODEL,OPENAI_MODEL,PROVIDER_ORDER,PET_TTS,GEMINI_PET_VOICE,GEMINI_PET_STYLE,GEMINI_TTS_MODEL,AZURE_SPEECH_REGION,AZURE_VOICE,AZURE_VOICE_MALE,AZURE_PET_PITCH,AZURE_PET_RATE,ELEVENLABS_VOICE,ELEVENLABS_VOICE_MALE,ELEVENLABS_PET_VOICE,CF_IMAGE_MODEL,CF_EDIT_MODEL,STT_MODEL,QWEN_BASE_URL"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/plugins/**,public/vendor/**"
+
 # 3D modellar: to'g'ri turi va brauzerda 1 hafta keshlanadi (qayta yuklanmaydi)
 [[headers]]
   for = "/models/*"
