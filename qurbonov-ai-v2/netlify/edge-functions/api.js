@@ -575,8 +575,17 @@ async function ttsEleven(text, male, anime) {
 
 // Gemini TTS (o'zbekchani biladi, ohangni so'z bilan boshqarsa bo'ladi, AI Studio'da "Voice design" bilan o'z ovozingizni yaratasiz)
 const geminiTtsReady = () => env("GEMINI_TTS") !== "off" && !!list(env("GEMINI_API_KEY") || "")[0];
-const PET_STYLE = "Voice of a cute Japanese anime heroine (moe style, youthful): high-pitched, bright, sweet and soft; playful, slightly proud and teasing; very expressive with cute rising intonation, little giggles and breathy pauses; lively, a bit fast; clear pronunciation";
+const PET_STYLE = "Native Uzbek speaker, a sweet young girl with a soft, light, slightly high voice, like a gentle anime heroine. Speak NATURALLY and calmly, as in everyday conversation: native Uzbek pronunciation and word stress, no foreign accent, no exaggerated or theatrical emphasis, no singing intonation. Warm, cute, a little playful. Normal pace.";
+// O'zbekcha matnni ovoz modeli to'g'ri o'qishi uchun tozalaymiz: o' g' → oʻ gʻ, tutuq → ʼ, ortiqcha belgilar olib tashlanadi
+function uzText(t) {
+  return String(t)
+    .replace(/([oOgG])['ʻ‘’`´]/g, (_, c) => c + "ʻ")
+    .replace(/([a-zA-Zʻ])['’`´]([a-zA-Z])/g, "$1ʼ$2")
+    .replace(/…+/g, ".").replace(/\.{2,}/g, ".").replace(/[*_#~<>\[\]{}|]/g, "")
+    .replace(/\s+-\s+/g, ", ").replace(/\s{2,}/g, " ").trim();
+}
 async function ttsGemini(text, anime) {
+  text = uzText(text);
   const keys = list(env("GEMINI_API_KEY"));
   const models = list(env("GEMINI_TTS_MODEL") || "gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts");
   const voice = (anime ? env("GEMINI_PET_VOICE") : env("GEMINI_TTS_VOICE")) || (anime ? "Leda" : "Kore");
@@ -584,11 +593,11 @@ async function ttsGemini(text, anime) {
   const part = { text, ...(style ? { speech_metadata: { style } } : {}) };
   let last = null;
   for (const model of models) for (const key of keys) {
-    for (const voiceConfig of [{ voice }, { prebuiltVoiceConfig: { voiceName: voice } }]) {
+    for (const [voiceConfig, lang] of [[{ voice }, "uz-UZ"], [{ prebuiltVoiceConfig: { voiceName: voice } }, "uz-UZ"], [{ voice }, ""], [{ prebuiltVoiceConfig: { voiceName: voice } }, ""]]) {
       const r = await withTimeout(30000, (signal) => fetch(`${env("GEMINI_TTS_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent`, {
         method: "POST", signal,
         headers: { "x-goog-api-key": key, "content-type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts: [part] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig } } }),
+        body: JSON.stringify({ contents: [{ role: "user", parts: [part] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig, ...(lang ? { languageCode: lang } : {}) } } }),
       }));
       if (r.ok) {
         const d = await r.json();
@@ -623,6 +632,15 @@ async function handleTTS(req) {
   const lang = ["uz", "ru", "en"].includes(input.lang) ? input.lang : "uz";
   if (!text) return json({ detail: "Bo'sh matn" }, 400);
   const anime = input.style === "anime"; // Shinobu: yosh anime qiz ovozi
+  const petTts = env("PET_TTS") || "gemini";   // Shinobu uchun bitta ovoz: gemini | azure | elevenlabs
+  if (anime && petTts === "azure" && azureReady()) {
+    try { return json({ url: await ttsAzure(text, lang, false, true), provider: "Azure" }); }
+    catch (e) { return json({ detail: "Ovoz band: " + (e.message || "xato"), fallback: false, only: true }, 503); }
+  }
+  if (anime && petTts === "elevenlabs" && elevenReady()) {
+    try { return json({ url: await ttsEleven(text, false, !!env("ELEVENLABS_PET_VOICE")), provider: "ElevenLabs" }); }
+    catch (e) { return json({ detail: "Ovoz band: " + (e.message || "xato"), fallback: false, only: true }, 503); }
+  }
   if (anime && geminiTtsReady()) {
     // Shinobu faqat o'z ovozida gapiradi — boshqa ovozga o'tmaydi
     try { return json({ url: await ttsGemini(text, true), provider: "Gemini" }); }
@@ -673,7 +691,7 @@ function companionSystem(c) {
   return `Sen ${c.name} — foydalanuvchi ekranida yashaydigan kichkina 3D anime ${boy ? "yigitsan" : "qizsan"} (tirik hamroh). Sen ODAMDEK his qilasan va harakat qilasan.
 Xarakteringiz: ${c.trait}
 Hissiyotlaring: quvonasan, kulasan, sakraysan, uyalasan (yuzingni yopasan), nozlanasan, xafa bo'lasan (orqangni o'girib olasan), yig'laysan, jahling chiqadi (oyoq tepasan, lunjingni shishirasan), arazlaysan, qo'rqasan, hayron qolasan, zerikasan, och qolasan, uyqung keladi.
-Foydalanuvchi — ${c.owner || "egang"}. U bilan o'zbek tilida, jonli, tabiiy, qisqa (1–3 gap) gaplash. Markdown va emoji ishlatma. Har safar boshqacha gapir, takrorlanma.
+Foydalanuvchi — ${c.owner || "egang"}. U bilan TOZA va TO'G'RI o'zbek tilida (lotin yozuvi) gaplash: oddiy, sodda, mantiqli, qisqa (1–3 gap), har bir gap tugallangan bo'lsin. Ruscha yoki inglizcha so'z aralashtirma, so'zlarni buzma, g'alati so'z o'ylab topma. Gaping ovoz bilan o'qiladi — shuning uchun markdown, emoji, qavs, uch nuqta, belgilar ishlatma. Har safar boshqacha gapir, takrorlanma.
 
 HOZIRGI HOLATING (0–100): ochlik=${s.hunger}, charchoq=${100 - (s.energy ?? 100)}, kayfiyat=${s.mood}, mehr=${s.affection}.
 ${s.sleeping ? "Hozir uxlab yotgan eding, uyg'otishdi." : ""}${s.sulking ? " Sen hozir ARAZLAB turibsan. Sovg'a yoki chin dildan kechirim so'ralmaguncha sovuq, qisqa javob ber (pout/hurt). Kechirim so'rasa — asta yumshab, turn_back qil." : ""}

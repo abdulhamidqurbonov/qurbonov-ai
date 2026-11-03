@@ -635,7 +635,6 @@ async function speak(text, { onStart, gender, style } = {}) {
     if (url) {
       await new Promise((res) => {
         const a = new Audio(url); speaker.audio = a
-        if (style === 'anime') { a.preservesPitch = false; a.playbackRate = 1.05 }   // biroz ingichkaroq
         a.onended = a.onerror = () => res()
         a.play().catch(() => res())
       })
