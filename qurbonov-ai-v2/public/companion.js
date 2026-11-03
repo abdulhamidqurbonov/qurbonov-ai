@@ -296,7 +296,12 @@ async function petSay(text, { face, pose, poseMs, loud } = {}) {
   if (pose) setPose(pose, poseMs)
   if (P.captions) { C.cap.textContent = text; C.cap.hidden = false; C.cap.classList.toggle('loud', !!loud); placeUI() }
   P.history.push({ role: 'assistant', content: text }); P.history = P.history.slice(-16); savePet()
-  await Promise.race([speak(text, { gender: PET.gender, style: isMale() ? undefined : 'anime', onStart: () => C.av?.setTalking(true) }), new Promise((r) => setTimeout(r, 4000 + text.length * 120))])
+  const spoke = await Promise.race([speak(text, { gender: PET.gender, style: isMale() ? undefined : 'anime', onStart: () => C.av?.setTalking(true) }), new Promise((r) => setTimeout(r, 6000 + text.length * 120))])
+  // O'z ovozi ishlamasa — boshqa ovozda emas, yozuv bilan aytadi
+  if (spoke === false && C.cap) {
+    C.cap.textContent = text; C.cap.hidden = false; placeUI()
+    C.av?.setTalking(true); await new Promise((r) => setTimeout(r, Math.min(7000, 1500 + text.length * 55)))
+  }
   C.av?.setTalking(false)
   setTimeout(() => { if (!C.av) return; C.cap.hidden = true }, 1200)
 }

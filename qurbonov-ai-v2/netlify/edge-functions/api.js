@@ -371,7 +371,7 @@ async function genCloudflare(prompt, size) {
   const r = await fetch(cfUrl(env("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell"), {
     method: "POST",
     headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, steps: 8, ...(size || {}) }),
+    body: JSON.stringify({ prompt, steps: 8 }),   // FLUX.1 schnell o'lcham qabul qilmaydi
   });
   return readCfImage(r);
 }
@@ -444,19 +444,26 @@ async function handleImage(req) {
   const K9 = env("CF_EDIT_MODEL") || "@cf/black-forest-labs/flux-2-klein-9b", K4 = "@cf/black-forest-labs/flux-2-klein-4b";
   const steps = edit
     ? [
-        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady(), run: () => flux2Cloudflare(K9, prompt, images, size) },
-        { id: "cloudflare4", name: "FLUX.2 Klein 4B", ok: cfReady() && K9 !== K4, run: () => flux2Cloudflare(K4, prompt, images, size) },
+        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady(), run: (p2) => flux2Cloudflare(K9, p2 || prompt, images, size) },
+        { id: "cloudflare4", name: "FLUX.2 Klein 4B", ok: cfReady() && K9 !== K4, run: (p2) => flux2Cloudflare(K4, p2 || prompt, images, size) },
       ]
     : [
-        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady() && !env("CF_IMAGE_MODEL"), run: () => flux2Cloudflare(K9, prompt, [], size) },
-        { id: "cloudflare1", name: "Cloudflare FLUX", ok: cfReady(), run: () => genCloudflare(prompt, size) },
-        { id: "pollinations", name: "Pollinations", ok: env("POLLINATIONS") !== "0", run: () => genPollinations(prompt, size) },
+        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady() && !env("CF_IMAGE_MODEL"), run: (p2) => flux2Cloudflare(K9, p2 || prompt, [], size) },
+        { id: "cloudflare1", name: "Cloudflare FLUX", ok: cfReady(), run: (p2) => genCloudflare(p2 || safePrompt || prompt) },
+        { id: "pollinations", name: "Pollinations", ok: env("POLLINATIONS") !== "0", run: (p2) => genPollinations(p2 || safePrompt || prompt, size) },
       ];
+  let safePrompt = null;
   for (const s of steps) {
     if (!s.ok) continue;
     try {
       return json({ image: await s.run(), provider: s.name, prompt, edit, skipped });
     } catch (e) {
+      // Filtr "flagged" desa (masalan brend nomi, mashhur odam) — xavfsiz, umumiy so'zlar bilan qayta urinamiz
+      if (/flagged|nsfw|safety|moderat/i.test(e.message || "") && !safePrompt) {
+        safePrompt = await quickLLM("Rewrite this image prompt so a strict safety filter accepts it: remove brand names, logos, trademarks, real people and celebrity names, " +
+          "replace them with generic descriptions (e.g. 'BMW' -> 'black luxury German sports sedan'). Keep everything else. Output ONLY the prompt.", prompt) || prompt;
+        try { return json({ image: await s.run(safePrompt), provider: s.name, prompt: safePrompt, edit, skipped }); } catch (e2) { e = e2; }
+      }
       skipped.push({ pid: s.id, name: s.name, kind: e.kind || "other", short: SHORT[e.kind] || "xato", reason: e.message });
     }
   }
@@ -568,15 +575,15 @@ async function ttsEleven(text, male, anime) {
 
 // Gemini TTS (o'zbekchani biladi, ohangni so'z bilan boshqarsa bo'ladi, AI Studio'da "Voice design" bilan o'z ovozingizni yaratasiz)
 const geminiTtsReady = () => env("GEMINI_TTS") !== "off" && !!list(env("GEMINI_API_KEY") || "")[0];
-const PET_STYLE = "cute, sweet and playful young anime girl; bright, slightly high voice; lively and a little teasing; clear pronunciation";
+const PET_STYLE = "Voice of a cute Japanese anime heroine (moe style, youthful): high-pitched, bright, sweet and soft; playful, slightly proud and teasing; very expressive with cute rising intonation, little giggles and breathy pauses; lively, a bit fast; clear pronunciation";
 async function ttsGemini(text, anime) {
   const keys = list(env("GEMINI_API_KEY"));
-  const model = env("GEMINI_TTS_MODEL") || "gemini-3.8-flash-tts";
+  const models = list(env("GEMINI_TTS_MODEL") || "gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts");
   const voice = (anime ? env("GEMINI_PET_VOICE") : env("GEMINI_TTS_VOICE")) || (anime ? "Leda" : "Kore");
   const style = anime ? env("GEMINI_PET_STYLE") || PET_STYLE : env("GEMINI_TTS_STYLE") || "";
   const part = { text, ...(style ? { speech_metadata: { style } } : {}) };
   let last = null;
-  for (const key of keys) {
+  for (const model of models) for (const key of keys) {
     for (const voiceConfig of [{ voice }, { prebuiltVoiceConfig: { voiceName: voice } }]) {
       const r = await withTimeout(30000, (signal) => fetch(`${env("GEMINI_TTS_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent`, {
         method: "POST", signal,
@@ -617,8 +624,9 @@ async function handleTTS(req) {
   if (!text) return json({ detail: "Bo'sh matn" }, 400);
   const anime = input.style === "anime"; // Shinobu: yosh anime qiz ovozi
   if (anime && geminiTtsReady()) {
+    // Shinobu faqat o'z ovozida gapiradi — boshqa ovozga o'tmaydi
     try { return json({ url: await ttsGemini(text, true), provider: "Gemini" }); }
-    catch { /* limit yoki xato — keyingisiga */ }
+    catch (e) { return json({ detail: "Shinobu ovozi hozir band: " + (e.message || "xato"), fallback: false, only: true }, 503); }
   }
   if (elevenReady() && (!anime || env("ELEVENLABS_PET_VOICE"))) {
     try { return json({ url: await ttsEleven(text, input.gender === "male", anime), provider: "ElevenLabs" }); }

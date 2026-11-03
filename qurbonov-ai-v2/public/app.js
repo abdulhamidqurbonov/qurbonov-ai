@@ -587,7 +587,7 @@ function stopSpeaking() {
   document.querySelectorAll('[data-speak].on').forEach((b) => { b.classList.remove('on'); b.innerHTML = ICON.speak })
 }
 async function ttsUrl(text, gender, style) {
-  if (!S.features.tts || S.features.tts === 'browser') return null
+  if (!S.features.tts || (S.features.tts === 'browser' && style !== 'anime')) return null
   try {
     const r = await fetch('/api/tts', { method: 'POST', headers: H(), body: JSON.stringify({ text, lang: langOf(text), gender, style }) })
     const d = await r.json().catch(() => ({}))
@@ -622,7 +622,8 @@ function browserSpeak(text, token, gender, style) {
 async function speak(text, { onStart, gender, style } = {}) {
   stopSpeaking()
   const token = speaker.token
-  const parts = chunksOf(plain(text))
+  // Shinobu: butun gap bitta so'rovda (ovoz o'zgarmasin), boshqa ovozga o'tmaydi
+  const parts = style === 'anime' ? [plain(text).slice(0, 1000)].filter(Boolean) : chunksOf(plain(text))
   if (!parts.length) return
   let next = ttsUrl(parts[0], gender, style)
   for (let i = 0; i < parts.length; i++) {
@@ -634,9 +635,12 @@ async function speak(text, { onStart, gender, style } = {}) {
     if (url) {
       await new Promise((res) => {
         const a = new Audio(url); speaker.audio = a
+        if (style === 'anime') { a.preservesPitch = false; a.playbackRate = 1.05 }   // biroz ingichkaroq
         a.onended = a.onerror = () => res()
         a.play().catch(() => res())
       })
+    } else if (style === 'anime') {
+      return false   // o'z ovozi ishlamadi — boshqa ovozda gapirmaydi
     } else {
       await browserSpeak(parts[i], token, gender, style)
     }
