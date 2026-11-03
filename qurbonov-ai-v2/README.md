@@ -78,11 +78,19 @@ python run.py
 
 ---
 
-## Shinobu Oshino (3D hamroh)
+## Shinobu Oshino va do'stlari (3D hamroh)
 
-- Bossangiz tinglaydi, gapingizni tushunadi: "chekkaga o'tib tur", "uxla", "raqsga tush", "o'ynaymiz"...
-- Och qoladi, uyqusi keladi, so'raydi; bermasangiz baqiradi va arazlaydi. Sovg'a (gul, ayiqcha, shirinlik, ko'rpa, yostiq) bilan yarashasiz.
-- O'yinlar: Tir, Tosh-qaychi-qog'oz, Yurakcha ushlash.
-- Batareya kamaysa ogohlantiradi (Chrome/Edge'da).
-- Sichqoncha ustiga olib borsangiz kichik menyu chiqadi (sovg'a, o'yin, yozish, sozlama).
-- Model: `public/models/vampira.vrm` (VRoid → VRM 1.0). Boshqa model qo'yish uchun `public/companion.js` dagi `PET` ni o'zgartiring.
+- **Bosish:** bir marta — tinglaydi; boshini bossangiz — erkalaysiz (uyaladi); tez-tez 3 marta — qitiqlaysiz (kuladi).
+- **Hissiyotlar:** uyalish (yuzini yopadi, qizaradi), nozlanish, kulish, sakrash, qarsak, xafa bo'lsa orqasini o'girib "xafa bo'ldim" deydi,
+  jahli chiqsa oyog'ini tepadi, lunjini shishiradi, qo'rqadi, hayron qoladi, zerikadi, yig'laydi.
+- **Uyqu:** yerga yonboshlab yotadi; ko'rpa yopsangiz, yostiq bersangiz — ko'rinadi.
+- **Ovqat:** shirinlik yesa yuziga yuqadi — menyudagi salfetka bilan artib qo'yasiz.
+- **22 xil sovg'a**, **9 ta o'yin** (u osonlikcha yutqazmaydi — siz ko'p yutsangiz, u ham kuchayadi).
+- **Personajlar:** menyu → Sozlamalar → Personajni almashtirish. Yangi personaj: VRoid'da yasang → `public/models/yulduz.vrm` (yoki `temur.vrm`) va kichik `.jpg` yuz rasmini qo'ying.
+  Ism va xarakterni `public/companion.js` dagi `CHARS` da o'zgartirasiz.
+- **Ko'rinish:** soch, ko'z va kiyim rangini o'zgartirish (Sozlamalar → Ko'rinishini o'zgartirish).
+
+## Rasm
+- Chizish: FLUX.2 Klein 9B (Cloudflare) → FLUX.1 → Pollinations. "Telefon oboyi" desangiz tik, "banner" desangiz keng chizadi.
+- Tahrirlash: FLUX.2 Klein 9B → 4B, asl rasm nisbati saqlanadi.
+- Nima xohlayotganingiz noaniq bo'lsa (rasm yuklab savol berdingizmi yoki o'zgartirish so'radingizmi), sayt AI'dan so'rab aniqlaydi.

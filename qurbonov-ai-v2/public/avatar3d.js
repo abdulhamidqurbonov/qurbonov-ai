@@ -48,12 +48,44 @@ const POSES = {
   shy: { head: [0.18, 0, 0.18], leftUpperArm: [0.35, 0, -1.25], rightUpperArm: [0.35, 0, 1.25], leftLowerArm: [0, 0.4, 0], rightLowerArm: [0, -0.4, 0] },
   dance: { ...ARMS_DOWN },
   walk: { ...ARMS_DOWN },
+  // --- yangi hissiyot pozalari ---
+  lie: { lie: 1, spine: [0.2, 0, 0], head: [0, 0, -0.35], neck: [0, 0, -0.15], leftUpperArm: [-0.3, 0, 1.0], leftLowerArm: [0, -1.8, 0],
+    rightUpperArm: [-0.3, 0, 1.1], rightLowerArm: [0, 1.2, 0], leftUpperLeg: [-1.2, 0, -0.05], rightUpperLeg: [-1.0, 0, 0.05],
+    leftLowerLeg: [1.7, 0, 0], rightLowerLeg: [1.5, 0, 0], leftFoot: [0.3, 0, 0], rightFoot: [0.3, 0, 0] },
+  laugh: { spine: [0.14, 0, 0], chest: [0.08, 0, 0], head: [-0.12, 0, 0], ...HUG_ARMS, leftUpperArm: [-0.15, 0, -1.15], rightUpperArm: [-0.15, 0, 1.15] },
+  giggle: { ...ARMS_DOWN, head: [0.12, 0, 0.14], rightUpperArm: [-0.7, 0.2, 1.05], rightLowerArm: [0, 2.25, 0], leftUpperArm: [-0.3, 0, -1.1], leftLowerArm: [0, -1.2, 0] },
+  jump: { head: [-0.12, 0, 0], leftUpperArm: [0, 0, 0.55], rightUpperArm: [0, 0, -0.55], leftLowerArm: [0, 0, 0.2], rightLowerArm: [0, 0, -0.2] },
+  coy: { head: [0.1, 0, 0.22], leftUpperArm: [-0.12, 0, -1.22], rightUpperArm: [-0.12, 0, 1.22], leftLowerArm: [0, -1.25, 0], rightLowerArm: [0, 1.25, 0],
+    leftUpperLeg: [0, 0.12, 0], rightUpperLeg: [0, -0.12, 0] },
+  pout: { head: [-0.12, 0.6, 0.05], neck: [0, 0.2, 0], leftUpperArm: [0.45, 0, -0.75], rightUpperArm: [0.45, 0, 0.75], leftLowerArm: [0, -2.0, 0], rightLowerArm: [0, 2.0, 0] },
+  tantrum: { spine: [0.08, 0, 0], head: [0.15, 0, 0], leftUpperArm: [0.1, 0, -1.0], rightUpperArm: [0.1, 0, 1.0], leftLowerArm: [0, -0.6, 0], rightLowerArm: [0, 0.6, 0] },
+  scared: { drop: 0.05, spine: [0.15, 0, 0], head: [0.15, 0, 0], ...HUG_ARMS, leftUpperArm: [-0.55, 0, -1.0], rightUpperArm: [-0.55, 0, 1.0],
+    leftUpperLeg: [-0.25, 0.15, 0], rightUpperLeg: [-0.25, -0.15, 0], leftLowerLeg: [0.45, 0, 0], rightLowerLeg: [0.45, 0, 0] },
+  surprised: { spine: [-0.08, 0, 0], head: [-0.14, 0, 0], leftUpperArm: [-0.65, 0, -0.85], rightUpperArm: [-0.65, 0, 0.85], leftLowerArm: [0, -1.95, 0], rightLowerArm: [0, 1.95, 0] },
+  sad: { spine: [0.16, 0, 0], chest: [0.1, 0, 0], head: [0.38, 0, 0.08], leftUpperArm: [0.05, 0, -1.32], rightUpperArm: [0.05, 0, 1.32], leftLowerArm: [0, 0, -0.05], rightLowerArm: [0, 0, 0.05] },
+  hurt: { spine: [0.12, 0, 0], head: [0.3, 0, 0], leftUpperArm: [0.05, 0, -1.3], rightUpperArm: [0.05, 0, 1.3], turn: 2.8 },
+  bow: { spine: [0.5, 0, 0], chest: [0.15, 0, 0], head: [0.12, 0, 0], leftUpperArm: [-0.25, 0, -1.25], rightUpperArm: [-0.25, 0, 1.25], leftLowerArm: [0, -0.3, 0], rightLowerArm: [0, 0.3, 0] },
+  clap: { head: [-0.05, 0, 0], leftUpperArm: [-0.75, 0, -1.0], rightUpperArm: [-0.75, 0, 1.0], leftLowerArm: [0, -1.2, 0], rightLowerArm: [0, 1.2, 0] },
+  stretch: { spine: [-0.1, 0, 0], head: [-0.25, 0, 0], leftUpperArm: [0, 0, 1.4], rightUpperArm: [0, 0, -1.4], leftLowerArm: [0, 0, 0.1], rightLowerArm: [0, 0, -0.1] },
+  kiss: { ...ARMS_DOWN, head: [0.05, 0, 0.15], rightUpperArm: [-0.7, 0.2, 1.05], rightLowerArm: [0, 2.25, 0] },
+  shycover: { spine: [0.1, 0, 0], head: [0.32, 0, 0.1], leftUpperArm: [-1.1, -0.5, -0.9], rightUpperArm: [-1.1, 0.5, 0.9], leftLowerArm: [0, -1.7, 0], rightLowerArm: [0, 1.7, 0],
+    leftUpperLeg: [0, 0.2, 0], rightUpperLeg: [0, -0.2, 0] },
+  cryStand: { spine: [0.2, 0, 0], head: [0.4, 0, 0], leftUpperArm: [-1.1, -0.5, -0.9], rightUpperArm: [-1.1, 0.5, 0.9], leftLowerArm: [0, -1.75, 0], rightLowerArm: [0, 1.75, 0] },
+  bored: { ...ARMS_DOWN, head: [0.05, 0, 0.28], spine: [0.05, 0, 0.04] },
+  wiped: { ...ARMS_DOWN, head: [-0.15, 0, 0.08], spine: [-0.03, 0, 0], leftUpperArm: [0.3, 0, -1.25], rightUpperArm: [0.3, 0, 1.25] },
+  pat: { ...ARMS_DOWN, head: [0.22, 0, 0.18], neck: [0.08, 0, 0], leftUpperArm: [0.35, 0, -1.25], rightUpperArm: [0.35, 0, 1.25] },
+  puff: { head: [0.05, -0.15, 0], leftUpperArm: [0.45, 0, -0.75], rightUpperArm: [0.45, 0, 0.75], leftLowerArm: [0, -2.0, 0], rightLowerArm: [0, 2.0, 0] },
 }
 // Hissiyot → VRM ifodalari
 const FACES = {
   neutral: {}, happy: { happy: 0.7 }, love: { happy: 1 }, sad: { sad: 0.85 }, cry: { sad: 1 }, angry: { angry: 0.9 },
   surprised: { surprised: 0.8 }, relaxed: { relaxed: 0.7 }, sleepy: { relaxed: 0.9 }, shy: { happy: 0.45, relaxed: 0.3 },
+  laugh: { happy: 1 }, pout: { angry: 0.45, sad: 0.2 }, scared: { surprised: 0.55, sad: 0.45 }, smug: { happy: 0.35, relaxed: 0.45 },
+  hurt: { sad: 0.75, angry: 0.15 }, bored: { relaxed: 0.5, sad: 0.15 }, excited: { happy: 0.85, surprised: 0.25 },
 }
+// pozaning o'ziga xos yuzi (ochiq og'iz va h.k.)
+const MOUTH = { laugh: ['aa', 0.75, 9], giggle: ['ih', 0.35, 11], surprised: ['oh', 0.7, 0], scared: ['ih', 0.25, 22], tantrum: ['ou', 0.4, 6],
+  pout: ['ou', 0.35, 0], puff: ['ou', 0.55, 0], cryStand: ['ih', 0.35, 7], kiss: ['ou', 0.6, 0], jump: ['aa', 0.45, 0], stretch: ['oh', 0.5, 1.5] }
 
 function mount(container, url, { onReady, onError, onProgress } = {}) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
@@ -73,17 +105,22 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     vrm: null, alive: true, t: 0, pose: 'stand', face: 'neutral', talking: false, eyesClosed: false,
     facing: 0, turn: 0, blinkAt: 1.5, blinkT: -1, waveT: -1, nodT: -1,
     mouth: 0, mouthTarget: 0, mouthShape: 'aa', nextSyl: 0, walkPhase: 0, walkAmt: 0, height: 1.5, hipsBase: 0,
-    cur: {}, exprCur: {},
+    cur: {}, exprCur: {}, poseT: 0, lieCur: 0,
   }
 
   function resize() {
     const w = container.clientWidth || 110, h = container.clientHeight || 185
     renderer.setSize(w, h, false)
     camera.aspect = w / h
-    const H = st.height * 1.08
-    const dist = (H / 2) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.min(1, camera.aspect / 0.5)
-    camera.position.set(0, st.height * 0.52, Math.max(dist, 2.2))
-    camera.lookAt(0, st.height * 0.5, 0)
+    frameCamera()
+  }
+  // Kamera: tik turganda bo'yiga, yotganda eniga moslab
+  function frameCamera() {
+    const L = st.lieCur, hh = st.height, tanF = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+    const needH = lerp(hh * 1.12, 0.7, L), needW = lerp(hh * 0.56, hh * 1.1, L), cy = lerp(hh * 0.52, 0.27, L)
+    const dist = Math.max(needH / 2 / tanF, needW / 2 / (tanF * camera.aspect), 1.2)
+    camera.position.set(0, cy + 0.02, dist)
+    camera.lookAt(0, cy, 0)
     camera.updateProjectionMatrix()
   }
 
@@ -107,17 +144,47 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     const head = vrm.humanoid?.getRawBoneNode('head')
     if (head) { const p = new THREE.Vector3(); head.getWorldPosition(p); st.height = p.y + 0.2 }
     for (const b of BONES) st.cur[b] = [0, 0, 0]
+    // rang berish uchun materiallarni guruhlaymiz (VRoid nomlari: HAIR, EyeIris, CLOTH, SKIN)
+    st.mats = { hair: [], eyes: [], cloth: [], skin: [] }
+    vrm.scene.traverse((o) => {
+      for (const m of [].concat(o.material || [])) {
+        if (!m || m.__grp) continue
+        const n = m.name || ''
+        const g = /HAIR/i.test(n) ? 'hair' : /EyeIris/i.test(n) ? 'eyes' : /CLOTH/i.test(n) ? 'cloth' : /Body.*SKIN|Face_00_SKIN/i.test(n) ? 'skin' : null
+        if (!g) continue
+        m.__grp = g; m.__orig = { c: m.color?.clone(), s: m.shadeColorFactor?.clone?.() }
+        st.mats[g].push(m)
+      }
+    })
+    for (const [g, hex] of Object.entries(tints)) applyTint(g, hex)
     resize()
     onReady?.()
   }).catch((e) => onError?.(e))
 
+  const tints = {}
+  function applyTint(g, hex) {
+    tints[g] = hex
+    for (const m of st.mats?.[g] || []) {
+      if (!hex) { m.__orig.c && m.color.copy(m.__orig.c); m.__orig.s && m.shadeColorFactor?.copy(m.__orig.s); continue }
+      const c = new THREE.Color(hex)
+      m.color?.copy(c)
+      m.shadeColorFactor?.copy?.(c.clone().multiplyScalar(0.72))
+    }
+  }
   const N = (name) => st.vrm?.humanoid?.getNormalizedBoneNode(name)
   const setExpr = (name, v) => { try { st.vrm?.expressionManager?.setValue(name, v) } catch { /* yo'q */ } }
 
   // Ekrandagi nuqta (ko'z yoshi, zzz, sovg'a uchun)
   const tmp = new THREE.Vector3()
   function anchor(name) {
-    const raw = st.vrm?.humanoid?.getRawBoneNode(name === 'head' ? 'head' : name === 'hand' ? 'rightHand' : name === 'chest' ? 'chest' : 'hips')
+    if (name === 'cheek' || name === 'mouth') {
+      const hn = st.vrm?.humanoid?.getNormalizedBoneNode('head'); if (!hn) return null
+      hn.updateWorldMatrix(true, false)
+      tmp.set(0, name === 'cheek' ? 0.075 : 0.05, 0.09); hn.localToWorld(tmp)
+      tmp.project(camera)
+      return { x: (tmp.x + 1) / 2 * container.clientWidth, y: (1 - tmp.y) / 2 * container.clientHeight }
+    }
+    const raw = st.vrm?.humanoid?.getRawBoneNode(name === 'head' ? 'head' : name === 'hand' ? 'rightHand' : name === 'chest' ? 'chest' : name === 'foot' ? 'rightFoot' : name === 'lhand' ? 'leftHand' : 'hips')
     if (!raw) return null
     raw.getWorldPosition(tmp)
     if (name === 'head') tmp.y += 0.06
@@ -140,7 +207,7 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     // --- qayoqqa qarash ---
     const r = renderer.domElement.getBoundingClientRect()
     const fresh = performance.now() - pointer.t < 4000
-    const sleeping = st.pose === 'sleep' || st.eyesClosed
+    const sleeping = st.pose === 'sleep' || st.pose === 'lie' || st.eyesClosed
     const dx = sleeping ? 0 : fresh ? clamp((pointer.x - (r.left + r.width / 2)) / 500, -1, 1) : Math.sin(t * 0.35) * 0.3
     const dy = sleeping ? 0 : fresh ? clamp((pointer.y - (r.top + r.height * 0.18)) / 500, -1, 1) : 0
     lookTarget.position.lerp(new THREE.Vector3(dx * 1.2, st.height * 0.9 - dy * 0.8, 2), 0.12)
@@ -152,6 +219,13 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     const turnTarget = P.turn ? P.turn : st.pose === 'walk' ? st.facing * 1.1 : 0
     st.turn = lerp(st.turn, turnTarget, 0.08)
     vrm.scene.rotation.y = st.turn
+    st.poseT += dt
+    // yotish: butun tana yonboshlab yerga yotadi
+    st.lieCur = lerp(st.lieCur, P.lie ? 1 : 0, 1 - Math.pow(0.02, dt))
+    const L = st.lieCur
+    vrm.scene.rotation.z = L * Math.PI / 2
+    vrm.scene.position.set(L * st.height * 0.5, L * 0.22, 0)
+    frameCamera()
 
     // --- maqsad burchaklar ---
     const target = {}
@@ -177,6 +251,45 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
       target.leftUpperLeg[0] = Math.max(0, Math.sin(b)) * -0.4; target.rightUpperLeg[0] = Math.max(0, -Math.sin(b)) * -0.4
       target.leftLowerLeg[0] = Math.max(0, Math.sin(b)) * 0.7; target.rightLowerLeg[0] = Math.max(0, -Math.sin(b)) * 0.7
     }
+    const pt = st.poseT
+    if (st.pose === 'laugh') { const q = Math.sin(t * 17); target.chest[0] += q * 0.05; target.spine[0] += q * 0.03; target.head[0] += -Math.abs(q) * 0.08; target.head[2] += Math.sin(t * 3) * 0.08 }
+    if (st.pose === 'giggle') { const q = Math.sin(t * 15); target.chest[1] += q * 0.04; target.head[2] += Math.sin(t * 4) * 0.1; target.spine[2] = Math.sin(t * 2) * 0.05 }
+    if (st.pose === 'jump') {
+      const ph = t * 6.2, air = Math.max(0, Math.sin(ph)), land = Math.max(0, -Math.sin(ph))
+      target.leftUpperLeg[0] -= land * 0.55; target.rightUpperLeg[0] -= land * 0.55; target.leftLowerLeg[0] += land * 1.0; target.rightLowerLeg[0] += land * 1.0
+      target.leftFoot[0] -= land * 0.35; target.rightFoot[0] -= land * 0.35; target.spine[0] += land * 0.15
+      target.leftUpperArm[2] += air * 0.6; target.rightUpperArm[2] -= air * 0.6
+      st.jumpY = air * 0.1 - land * 0.06
+    } else st.jumpY = 0
+    if (st.pose === 'coy') {
+      const q = Math.sin(t * 1.8)
+      target.hips[1] = q * 0.2; target.chest[1] = -q * 0.08; target.head[2] += Math.sin(t * 1.8 + 1.2) * 0.12; target.head[1] += -q * 0.15
+      const tap = Math.max(0, Math.sin(t * 3.4)); target.rightUpperLeg[0] -= 0.12; target.rightLowerLeg[0] += 0.35 + tap * 0.3; target.rightFoot[0] += 0.5
+    }
+    if (st.pose === 'pout' || st.pose === 'puff') { target.head[0] += Math.max(0, Math.sin(pt * 3)) * (pt < 1.2 ? 0.12 : 0) ; target.chest[1] += Math.sin(t * 1.2) * 0.05 }
+    if (st.pose === 'tantrum') {
+      const ph = t * 9, a = Math.max(0, Math.sin(ph)), b2 = Math.max(0, -Math.sin(ph))
+      target.leftUpperLeg[0] -= a * 0.6; target.leftLowerLeg[0] += a * 0.9; target.rightUpperLeg[0] -= b2 * 0.6; target.rightLowerLeg[0] += b2 * 0.9
+      target.leftUpperArm[0] += Math.sin(ph * 2) * 0.25; target.rightUpperArm[0] -= Math.sin(ph * 2) * 0.25
+      target.leftLowerArm[1] += Math.sin(ph * 2) * 0.4; target.rightLowerArm[1] -= Math.sin(ph * 2) * 0.4
+      target.head[1] += Math.sin(t * 7) * 0.2; target.spine[2] = Math.sin(ph) * 0.06
+    }
+    if (st.pose === 'scared') { const q = Math.sin(t * 34) * 0.025; target.chest[1] += q; target.head[2] += q; target.spine[0] += q * 0.5 }
+    if (st.pose === 'surprised') { st.jumpY = pt < 0.4 ? Math.sin(pt / 0.4 * Math.PI) * 0.06 : 0 }
+    if (st.pose === 'sad' || st.pose === 'hurt') { target.head[2] += Math.sin(t * 0.8) * 0.04; target.chest[0] += Math.max(0, Math.sin(t * 0.9)) * 0.04 }
+    if (st.pose === 'cryStand') { const q = Math.sin(t * 13) * 0.03; target.chest[0] += q; target.head[2] += Math.sin(t * 2.2) * 0.07; target.spine[2] = Math.sin(t * 1.1) * 0.04 }
+    if (st.pose === 'shycover') { const q = Math.sin(t * 2.2); target.hips[1] = q * 0.15; target.head[2] += q * 0.08; target.chest[1] = -q * 0.06 }
+    if (st.pose === 'clap') { const q = (Math.sin(t * 14) + 1) / 2; target.leftLowerArm[1] -= q * 0.45; target.rightLowerArm[1] += q * 0.45; target.leftUpperArm[1] += q * 0.25; target.rightUpperArm[1] -= q * 0.25; st.jumpY = Math.max(0, Math.sin(t * 7)) * 0.025 }
+    if (st.pose === 'stretch') { target.spine[2] = Math.sin(t * 1.3) * 0.18; target.chest[2] = Math.sin(t * 1.3) * 0.08 }
+    if (st.pose === 'bored') { target.hips[1] = Math.sin(t * 0.9) * 0.12; target.head[2] += Math.sin(t * 0.7) * 0.1; target.leftUpperArm[0] += Math.sin(t * 0.9) * 0.2; target.rightUpperArm[0] -= Math.sin(t * 0.9) * 0.2 }
+    if (st.pose === 'kiss') {
+      const k2 = clamp((pt - 0.7) / 0.35, 0, 1)
+      target.rightUpperArm = [lerp(-0.7, -1.35, k2), lerp(0.2, -0.1, k2), lerp(1.05, 0.75, k2)]; target.rightLowerArm = [0, lerp(2.25, 0.25, k2), 0]
+      target.head[0] += lerp(0, -0.1, k2)
+    }
+    if (st.pose === 'wiped') { const k2 = Math.max(0, 1 - pt / 1.6); target.head[1] += Math.sin(t * 16) * 0.18 * k2; target.head[2] += Math.sin(t * 12) * 0.08 * k2 }
+    if (st.pose === 'pat') { target.head[2] += Math.sin(t * 3.2) * 0.12; target.head[0] += Math.sin(t * 6.4) * 0.04; target.hips[1] = Math.sin(t * 1.6) * 0.08 }
+    if (st.pose === 'lie') { target.chest[0] += breath * 0.02 }
     if (st.talking && ['stand', 'listen', 'shy'].includes(st.pose)) {
       target.rightUpperArm = [-0.25, 0, 1.05 + Math.sin(t * 2.3) * 0.08]; target.rightLowerArm = [0, 0.5 + Math.sin(t * 2.9) * 0.15, 0]
       target.head[0] += Math.sin(t * 6.3) * 0.03
@@ -210,7 +323,7 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     const hipsN = N('hips')
     if (hipsN) {
       st.dropCur = lerp(st.dropCur || 0, P.drop || 0, k * 0.8)
-      hipsN.position.y = st.hipsBase * (1 - st.dropCur) + Math.abs(Math.sin(wp)) * 0.025 * wa + (st.pose === 'dance' ? Math.abs(Math.sin(t * 5.2)) * 0.03 : 0)
+      hipsN.position.y = st.hipsBase * (1 - st.dropCur) + (st.jumpY || 0) + Math.abs(Math.sin(wp)) * 0.025 * wa + (st.pose === 'dance' ? Math.abs(Math.sin(t * 5.2)) * 0.03 : 0)
     }
 
     // --- ko'z qisish ---
@@ -222,7 +335,8 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
       if (st.blinkT > 0.16) { st.blinkT = -1; st.blinkAt = t + 2 + Math.random() * 3.5; if (Math.random() < 0.2) st.blinkAt = t + 0.25 }
     }
     if (sleeping) blink = 1
-    if (st.pose === 'cry') blink = Math.max(blink, 0.55)
+    if (st.pose === 'cry' || st.pose === 'cryStand') blink = Math.max(blink, 0.55)
+    if (st.pose === 'laugh' || st.pose === 'giggle' || st.pose === 'wiped') blink = Math.max(blink, 0.7)
     if (st.face === 'sleepy') blink = Math.max(blink, 0.45 + Math.sin(t * 0.8) * 0.15)
 
     // --- og'iz ---
@@ -232,7 +346,8 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
         st.mouthTarget = Math.random() < 0.18 ? 0.05 : 0.35 + Math.random() * 0.6
         st.mouthShape = ['aa', 'aa', 'oh', 'ih', 'ou', 'ee'][Math.floor(Math.random() * 6)]
       }
-    } else if (st.pose === 'yawn') { st.mouthShape = 'oh'; st.mouthTarget = 0.6 + Math.sin(t * 1.5) * 0.4 }
+    } else if (MOUTH[st.pose]) { const [sh, v, sp] = MOUTH[st.pose]; st.mouthShape = sh; st.mouthTarget = sp ? v * (0.6 + 0.4 * Math.abs(Math.sin(t * sp))) : v }
+    else if (st.pose === 'yawn') { st.mouthShape = 'oh'; st.mouthTarget = 0.6 + Math.sin(t * 1.5) * 0.4 }
     else if (st.pose === 'eat') { st.mouthShape = 'aa'; st.mouthTarget = (Math.sin(t * 9) + 1) * 0.25 }
     else if (st.pose === 'cry') { st.mouthShape = 'ih'; st.mouthTarget = 0.3 + Math.sin(t * 7) * 0.15 }
     else st.mouthTarget = st.pose === 'listen' ? 0.1 : 0
@@ -256,8 +371,11 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
   resize()
 
   return {
-    setPose(p) { if (POSES[p]) st.pose = p },
+    setPose(p) { if (p === 'sleep') p = 'lie'; if (POSES[p] && p !== st.pose) { st.pose = p; st.poseT = 0 } },
+    defPose(name, obj) { POSES[name] = obj },
+    setTint: applyTint,
     get pose() { return st.pose },
+    get lying() { return st.lieCur > 0.5 },
     setFace(f) { st.face = FACES[f] ? f : 'neutral' },
     setTalking(v) { st.talking = !!v },
     setFacing(d) { st.facing = d },

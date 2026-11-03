@@ -331,11 +331,20 @@ async function quickLLM(system, text, maxTokens = 220) {
 }
 
 const toEnglishPrompt = async (text, edit) => env("TRANSLATE_PROMPT") === "0" ? text : (await quickLLM(edit
-  ? "Rewrite the user's image EDIT instruction as one short, clear English instruction for an image editing model (e.g. 'Make the sky purple, keep everything else the same'). Output ONLY the instruction."
-  : "Translate the user's image request into one detailed English prompt for an image generator. Output ONLY the prompt, no quotes, no explanations.", text)) || text;
+  ? "You turn a user's photo-edit request (any language, often Uzbek) into ONE precise English instruction for a reference-based image model (FLUX.2). " +
+    "The reference photo is 'image 0' (and 'image 1'... if more). Say exactly what to change AND explicitly say to keep everything else identical: " +
+    "same person, face, identity, pose, composition, lighting, background, colors and style unless the user asked to change them. " +
+    "If the user wants a style change (anime, cartoon, oil painting...), describe the target style richly but keep subject and composition. " +
+    "Example: 'Edit image 0: change the shirt color to deep red. Keep the same person, face, pose, background, lighting and framing exactly as in image 0.' Output ONLY the instruction."
+  : "Translate the user's image request (any language, often Uzbek) into ONE rich English prompt for a high-quality image generator: subject, details, setting, lighting, " +
+    "camera/art style, mood, quality words (highly detailed, sharp focus). Keep any text the user wants written in the image in quotes exactly. Output ONLY the prompt, no quotes around it, no explanations.", text)) || text;
 
 async function readCfImage(r) {
-  if (!r.ok) throw classify(r.status);
+  if (!r.ok) {
+    const e = classify(r.status)
+    try { const d = await r.json(); const m = d.errors?.[0]?.message || d.error || ""; if (m) e.message = `${e.message} (${String(m).slice(0, 120)})` } catch { /* */ }
+    throw e;
+  }
   const ct = r.headers.get("content-type") || "";
   if (ct.startsWith("image/")) return `data:${ct};base64,${toBase64(await r.arrayBuffer())}`;
   const d = await r.json();
@@ -344,34 +353,48 @@ async function readCfImage(r) {
   return b64.startsWith("data:") ? b64 : `data:image/jpeg;base64,${b64}`;
 }
 
-async function genCloudflare(prompt) {
+// O'lcham: so'rov matnidan (telefon oboyi → tik, banner → keng) yoki tahrirda asl rasm nisbatidan
+const fit16 = (v) => Math.max(256, Math.min(1920, Math.round(v / 16) * 16));
+function sizeFor(text, aspect) {
+  let a = +aspect || 0;
+  if (!a) {
+    if (/telefon|oboy|wallpaper|tik|vertikal|story|stories|portret|portrait|обои|вертик/i.test(text)) a = 9 / 16;
+    else if (/banner|keng|gorizontal|youtube|preview|prevyu|muqova|cover|landscape|пейзаж|горизонт/i.test(text)) a = 16 / 9;
+    else a = 1;
+  }
+  a = Math.max(0.5, Math.min(2, a));
+  const area = 1024 * 1024;
+  return { width: fit16(Math.sqrt(area * a)), height: fit16(Math.sqrt(area / a)) };
+}
+
+async function genCloudflare(prompt, size) {
   const r = await fetch(cfUrl(env("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell"), {
     method: "POST",
     headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, steps: 4 }),
+    body: JSON.stringify({ prompt, steps: 8, ...(size || {}) }),
   });
   return readCfImage(r);
 }
 
-async function editCloudflare(prompt, images) {
+// FLUX.2 Klein: ham chizadi, ham tahrirlaydi (4 tagacha namuna rasm, har biri < 512px)
+async function flux2Cloudflare(model, prompt, images, size) {
   const form = new FormData();
   form.append("prompt", prompt);
-  images.slice(0, 4).forEach((u, i) => { const b = dataUrlToBlob(u); if (b) form.append(`input_image_${i}`, b, `image_${i}.jpg`); });
-  form.append("width", "1024");
-  form.append("height", "1024");
-  const r = await fetch(cfUrl(env("CF_EDIT_MODEL") || "@cf/black-forest-labs/flux-2-klein-4b"), {
-    method: "POST", headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}` }, body: form,
-  });
+  (images || []).slice(0, 4).forEach((u, i) => { const b = dataUrlToBlob(u); if (b) form.append(`input_image_${i}`, b, `image_${i}.jpg`); });
+  form.append("width", String(size.width));
+  form.append("height", String(size.height));
+  if (images?.length) form.append("guidance", env("CF_EDIT_GUIDANCE") || "5");
+  const r = await withTimeout(45000, (signal) => fetch(cfUrl(model), { method: "POST", signal, headers: { Authorization: `Bearer ${env("CF_API_TOKEN")}` }, body: form }));
   return readCfImage(r);
 }
 
-async function genPollinations(prompt) {
+async function genPollinations(prompt, size = { width: 1024, height: 1024 }) {
   const key = env("POLLINATIONS_API_KEY");
   const q = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1e9);
   const url = key
-    ? `https://gen.pollinations.ai/image/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`
-    : `https://image.pollinations.ai/prompt/${q}?model=flux&width=1024&height=1024&seed=${seed}&nologo=true`;
+    ? `https://gen.pollinations.ai/image/${q}?model=flux&width=${size.width}&height=${size.height}&seed=${seed}&nologo=true`
+    : `https://image.pollinations.ai/prompt/${q}?model=flux&width=${size.width}&height=${size.height}&seed=${seed}&nologo=true`;
   try {
     const r = await withTimeout(35000, (signal) => fetch(url, { signal, headers: key ? { Authorization: `Bearer ${key}` } : {} }));
     if (!r.ok) throw classify(r.status);
@@ -384,6 +407,30 @@ async function genPollinations(prompt) {
   }
 }
 
+// Niyatni AI bilan aniqlash (so'z qoliplari ishonchsiz bo'lgan holatlar uchun)
+async function handleIntent(req) {
+  let input;
+  try { input = await req.json(); } catch { return json({ intent: "chat" }); }
+  const text = String(input.text || "").slice(0, 600);
+  const hasImages = !!input.hasImages, hasLast = !!input.hasLastImage;
+  const prev = String(input.prev || "").slice(0, 300);
+  const sys = "Classify what the user wants from an AI assistant. Context: " +
+    (hasImages ? "the user ATTACHED image(s) to this message. " : "") + (hasLast ? "The assistant's previous reply was a generated image. " : "") +
+    (prev ? `Previous user message: "${prev}". ` : "") +
+    "Answer with exactly ONE word:\n" +
+    "draw — wants a NEW picture/image/logo created\n" +
+    (hasImages ? "edit — wants the attached image changed/edited/restyled/combined (output = a new image)\nvision — asks a question about the attached image or wants it described/analyzed/read (output = text)\n" : "") +
+    (hasLast ? "edit_last — wants the previously generated image changed (e.g. 'make it red', 'add a cat', 'now at night', 'qizil qil', 'fonini o'zgartir')\n" : "") +
+    "chat — anything else (questions, conversation, code, explanations, even questions ABOUT drawing)\nThe message may be Uzbek, Russian or English.";
+  const out = (await quickLLM(sys, text, 300) || "").toLowerCase();
+  const m = out.match(/edit_last|edit|vision|draw|chat/);
+  let intent = m ? m[0] : "";
+  if (intent === "edit" && !hasImages) intent = hasLast ? "edit_last" : "chat";
+  if (intent === "edit_last" && !hasLast) intent = "chat";
+  if (intent === "vision" && !hasImages) intent = "chat";
+  return json({ intent: intent || "" });
+}
+
 async function handleImage(req) {
   let input;
   try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
@@ -392,12 +439,18 @@ async function handleImage(req) {
   if (!text) return json({ detail: "Rasm tavsifini yozing" }, 400);
   const edit = images.length > 0;
   const prompt = await toEnglishPrompt(text, edit);
+  const size = sizeFor(text, edit ? input.aspect : 0);
   const skipped = [];
+  const K9 = env("CF_EDIT_MODEL") || "@cf/black-forest-labs/flux-2-klein-9b", K4 = "@cf/black-forest-labs/flux-2-klein-4b";
   const steps = edit
-    ? [{ id: "cloudflare", name: "Cloudflare FLUX.2", ok: cfReady(), run: () => editCloudflare(prompt, images) }]
+    ? [
+        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady(), run: () => flux2Cloudflare(K9, prompt, images, size) },
+        { id: "cloudflare4", name: "FLUX.2 Klein 4B", ok: cfReady() && K9 !== K4, run: () => flux2Cloudflare(K4, prompt, images, size) },
+      ]
     : [
-        { id: "cloudflare", name: "Cloudflare FLUX", ok: cfReady(), run: () => genCloudflare(prompt) },
-        { id: "pollinations", name: "Pollinations", ok: env("POLLINATIONS") !== "0", run: () => genPollinations(prompt) },
+        { id: "cloudflare", name: "FLUX.2 Klein 9B", ok: cfReady() && !env("CF_IMAGE_MODEL"), run: () => flux2Cloudflare(K9, prompt, [], size) },
+        { id: "cloudflare1", name: "Cloudflare FLUX", ok: cfReady(), run: () => genCloudflare(prompt, size) },
+        { id: "pollinations", name: "Pollinations", ok: env("POLLINATIONS") !== "0", run: () => genPollinations(prompt, size) },
       ];
   for (const s of steps) {
     if (!s.ok) continue;
@@ -513,6 +566,49 @@ async function ttsEleven(text, male, anime) {
   return `data:audio/mpeg;base64,${toBase64(await r.arrayBuffer())}`;
 }
 
+// Gemini TTS (o'zbekchani biladi, ohangni so'z bilan boshqarsa bo'ladi, AI Studio'da "Voice design" bilan o'z ovozingizni yaratasiz)
+const geminiTtsReady = () => env("GEMINI_TTS") !== "off" && !!list(env("GEMINI_API_KEY") || "")[0];
+const PET_STYLE = "cute, sweet and playful young anime girl; bright, slightly high voice; lively and a little teasing; clear pronunciation";
+async function ttsGemini(text, anime) {
+  const keys = list(env("GEMINI_API_KEY"));
+  const model = env("GEMINI_TTS_MODEL") || "gemini-3.8-flash-tts";
+  const voice = (anime ? env("GEMINI_PET_VOICE") : env("GEMINI_TTS_VOICE")) || (anime ? "Leda" : "Kore");
+  const style = anime ? env("GEMINI_PET_STYLE") || PET_STYLE : env("GEMINI_TTS_STYLE") || "";
+  const part = { text, ...(style ? { speech_metadata: { style } } : {}) };
+  let last = null;
+  for (const key of keys) {
+    for (const voiceConfig of [{ voice }, { prebuiltVoiceConfig: { voiceName: voice } }]) {
+      const r = await withTimeout(30000, (signal) => fetch(`${env("GEMINI_TTS_BASE_URL") || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent`, {
+        method: "POST", signal,
+        headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [part] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig } } }),
+      }));
+      if (r.ok) {
+        const d = await r.json();
+        const inl = d?.candidates?.[0]?.content?.parts?.find((x) => x.inlineData || x.inline_data);
+        const data = inl?.inlineData || inl?.inline_data;
+        if (!data?.data) throw new Error("bo'sh audio");
+        let mime = data.mimeType || data.mime_type || "audio/wav";
+        if (/l16|pcm/i.test(mime)) return pcmToWav(data.data, +(mime.match(/rate=(\d+)/)?.[1] || 24000));
+        return `data:${mime.split(";")[0]};base64,${data.data}`;
+      }
+      last = r.status;
+      if (r.status !== 400) break; // 400 bo'lsa — boshqa formatda qayta urinib ko'ramiz
+    }
+  }
+  throw classify(last || 500);
+}
+// Xom PCM kelsa, WAV sarlavha qo'shamiz
+function pcmToWav(b64, rate) {
+  const pcm = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const h = new DataView(new ArrayBuffer(44));
+  const w = (o, str) => [...str].forEach((c, i) => h.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); h.setUint32(4, 36 + pcm.length, true); w(8, "WAVE"); w(12, "fmt "); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true);
+  h.setUint32(24, rate, true); h.setUint32(28, rate * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true); w(36, "data"); h.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(44 + pcm.length); out.set(new Uint8Array(h.buffer)); out.set(pcm, 44);
+  return `data:audio/wav;base64,${toBase64(out.buffer)}`;
+}
+
 async function handleTTS(req) {
   let input;
   try { input = await req.json(); } catch { return json({ detail: "Noto'g'ri so'rov" }, 400); }
@@ -520,6 +616,10 @@ async function handleTTS(req) {
   const lang = ["uz", "ru", "en"].includes(input.lang) ? input.lang : "uz";
   if (!text) return json({ detail: "Bo'sh matn" }, 400);
   const anime = input.style === "anime"; // Shinobu: yosh anime qiz ovozi
+  if (anime && geminiTtsReady()) {
+    try { return json({ url: await ttsGemini(text, true), provider: "Gemini" }); }
+    catch { /* limit yoki xato — keyingisiga */ }
+  }
   if (elevenReady() && (!anime || env("ELEVENLABS_PET_VOICE"))) {
     try { return json({ url: await ttsEleven(text, input.gender === "male", anime), provider: "ElevenLabs" }); }
     catch { /* limit tugagan bo'lsa Azure'ga o'tamiz */ }
@@ -553,30 +653,35 @@ async function handleTTS(req) {
 
 // ================= HAMROH (Shinobu) =================
 // Gapni tushunib, nima deyish, qanday his qilish va nima qilishni JSON qilib qaytaradi.
-const ACTIONS = ["none", "go_edge", "go_left", "go_right", "go_center", "come_closer", "sit", "stand", "sleep", "wake", "dance",
-  "yawn", "wave", "turn_away", "turn_back", "eat", "hug", "cry", "cheer", "game_tir", "game_rps", "game_hearts", "joke"];
-const EMOTIONS = ["neutral", "happy", "love", "shy", "sad", "cry", "angry", "surprised", "sleepy", "relaxed"];
+const ACTIONS = ["none", "go_edge", "go_left", "go_right", "go_center", "come_closer", "sit", "stand", "sleep", "lie_down", "wake", "dance",
+  "yawn", "wave", "turn_away", "sad_turn", "turn_back", "eat", "hug", "cry", "cheer", "laugh", "giggle", "jump", "coy", "shy_cover", "pout", "puff",
+  "tantrum", "stomp", "scared", "surprised", "bow", "clap", "stretch", "blow_kiss", "sad", "bored", "think", "joke",
+  "game_tir", "game_rps", "game_hearts", "game_memory", "game_ttt", "game_snake", "game_quiz", "game_reaction", "game_whack"];
+const EMOTIONS = ["neutral", "happy", "love", "shy", "sad", "cry", "angry", "surprised", "sleepy", "relaxed", "laugh", "pout", "scared", "smug", "hurt", "bored", "excited"];
 
 function companionSystem(c) {
   const s = c.state || {};
-  return `Sen ${c.name} — foydalanuvchi ekranida yashaydigan kichkina 3D anime qizsan (tirik hamroh, tamagotchi kabi).
+  const boy = c.gender === "male";
+  return `Sen ${c.name} — foydalanuvchi ekranida yashaydigan kichkina 3D anime ${boy ? "yigitsan" : "qizsan"} (tirik hamroh). Sen ODAMDEK his qilasan va harakat qilasan.
 Xarakteringiz: ${c.trait}
-Sen haqiqiy qizdek his qilasan: quvonasan, uyalasan, xafa bo'lasan, yig'laysan, jahling chiqadi, arazlaysan, och qolasan, uyqung keladi.
-Foydalanuvchi — ${c.owner || "egang"}. U bilan o'zbek tilida, jonli, qisqa (1–3 gap) gaplash. Markdown va emoji ishlatma.
+Hissiyotlaring: quvonasan, kulasan, sakraysan, uyalasan (yuzingni yopasan), nozlanasan, xafa bo'lasan (orqangni o'girib olasan), yig'laysan, jahling chiqadi (oyoq tepasan, lunjingni shishirasan), arazlaysan, qo'rqasan, hayron qolasan, zerikasan, och qolasan, uyqung keladi.
+Foydalanuvchi — ${c.owner || "egang"}. U bilan o'zbek tilida, jonli, tabiiy, qisqa (1–3 gap) gaplash. Markdown va emoji ishlatma. Har safar boshqacha gapir, takrorlanma.
 
 HOZIRGI HOLATING (0–100): ochlik=${s.hunger}, charchoq=${100 - (s.energy ?? 100)}, kayfiyat=${s.mood}, mehr=${s.affection}.
-${s.sleeping ? "Hozir uxlab yotgan eding, uyg'otishdi." : ""}${s.sulking ? " Sen hozir ARAZLAB turibsan (xafa qilishgan yoki e'tiborsiz qoldirishgan). Sovg'a yoki chin dildan kechirim so'ralmaguncha sovuq javob ber." : ""}
-${s.hunger > 70 ? "Qorning juda och — buni aytib qo'y." : ""}${(s.energy ?? 100) < 25 ? " Uyqung kelyapti — esnab, ko'rpa yoki yostiq so'ra." : ""}
+${s.sleeping ? "Hozir uxlab yotgan eding, uyg'otishdi." : ""}${s.sulking ? " Sen hozir ARAZLAB turibsan. Sovg'a yoki chin dildan kechirim so'ralmaguncha sovuq, qisqa javob ber (pout/hurt). Kechirim so'rasa — asta yumshab, turn_back qil." : ""}
+${s.hunger > 70 ? "Qorning juda och — buni aytib qo'y." : ""}${(s.energy ?? 100) < 25 ? " Uyqung kelyapti — esnab, ko'rpa yoki yostiq so'ra." : ""}${s.messy ? " Yuzingga ovqat yuqib qolgan." : ""}
 Vaqt: ${s.time || ""}. Oxirgi sovg'alar: ${s.gifts || "yo'q"}.
 
-Qoidalar:
-- Agar foydalanuvchi qo'pol gapirsa, haqoratlasa yoki xafa qilsa — xafa bo'l yoki yig'la (emotion: sad yoki cry), insult=true, mood_delta manfiy.
-- Maqtasa, mehr ko'rsatsa — uyal yoki quvon (shy/love), mood_delta musbat.
-- "Chekkaga o'tib tur", "to'syapsan", "berkitib qo'ydingiz" desa — go_edge. "Chapga/o'ngga o't" — go_left/go_right. "O'rtaga kel" — go_center. "Yonimga kel" — come_closer.
-- "Uxla", "men uxlayman sen ham uxla" — esnab rozi bo'l, action=sleep. "Tur", "uyg'on" — wake.
-- "Raqsga tush" — dance. "O'ynaymiz", "zerikdim" — o'yin taklif qil (game_tir, game_rps yoki game_hearts) yoki hazil ayt (joke).
-- "Zerikdim", "kuldir" — kulgili hazil yoki qiziq gap ayt (action joke).
-- Har doim xarakteringda qol, lekin foydali savolga aniq javob ber.
+NIYATNI TUSHUN (so'zma-so'z emas, ma'nosiga qarab):
+- Qo'pollik, haqorat, masxara, "yomonsan", "kerakmassan" → emotion: hurt yoki cry, action: sad_turn yoki cry, insult=true, mood_delta -10..-25.
+- Maqtov, "chiroyli", "yaxshi ko'raman", "yoqimtoysan" → shy yoki love; action: shy_cover, coy yoki blow_kiss; mood_delta +5..+15.
+- Hazil, kulgili gap → laugh, action: laugh yoki giggle. Ajoyib yangilik → excited, action: jump yoki clap.
+- Qo'rqitsa → scared. Kutilmagan gap → surprised. Jahlini chiqarsa (lekin haqorat emas) → angry/pout, action: tantrum, puff yoki pout.
+- "Chekkaga o'tib tur", "to'syapsan", "berkitib qo'ydingiz", "xalaqit beryapsan" → go_edge. "Chapga/o'ngga o't" → go_left/go_right. "O'rtaga kel" → go_center. "Yonimga kel" → come_closer.
+- "Uxla", "yot", "men uxlayman sen ham uxla", "dam ol" → sleep. "Tur", "uyg'on" → wake. "O'tir" → sit. "Raqsga tush" → dance. "Ta'zim qil" → bow. "Qarsak chal" → clap. "Kerishib ol" → stretch. "Sakra" → jump.
+- "Kechirasan", "uzr", "kechir" (arazlab turganda) → turn_back, mood_delta +15.
+- "O'ynaymiz", "zerikdim" → o'yin taklif qil: game_tir, game_whack, game_memory, game_ttt, game_reaction, game_quiz, game_snake, game_rps yoki game_hearts. Kulgi so'rasa → joke (rostdan kulgili, qisqa hazil ayt).
+- Oddiy savolga — xarakteringda qolib, aniq va foydali javob ber.
 
 FAQAT shu JSON bilan javob ber (boshqa hech narsa yozma):
 {"say":"aytadigan gaping","emotion":"${EMOTIONS.join("|")}","action":"${ACTIONS.join("|")}","mood_delta":0,"insult":false}`;
@@ -593,7 +698,7 @@ async function handleCompanion(req) {
   const msgs = clean([...history, { role: "user", content: text }]);
   let raw = "";
   try {
-    const r = await runChat(msgs, { system: companionSystem({ name: String(c.name || "Shinobu").slice(0, 40), trait: String(c.trait || "").slice(0, 400), owner: String(c.owner || "").slice(0, 40), state: c.state || {} }), maxTokens: 400 });
+    const r = await runChat(msgs, { system: companionSystem({ name: String(c.name || "Shinobu").slice(0, 40), trait: String(c.trait || "").slice(0, 500), gender: c.gender === "male" ? "male" : "female", owner: String(c.owner || "").slice(0, 40), state: c.state || {} }), maxTokens: 400 });
     for await (const t of sseText(r.upstream.body, r.p.kind)) raw += t;
   } catch (e) {
     return json({ detail: e.message }, 503);
@@ -718,7 +823,7 @@ export default async (req) => {
         edit: cfReady(),
         vision: order().some((id) => PROVIDERS[id].vision && keysOf(PROVIDERS[id]).length),
         stt: aishaReady() || keysOf(PROVIDERS.groq).length > 0 || cfReady(),
-        tts: elevenReady() ? "elevenlabs" : azureReady() ? "azure" : aishaReady() ? "aisha" : "browser",
+        tts: geminiTtsReady() ? "gemini" : elevenReady() ? "elevenlabs" : azureReady() ? "azure" : aishaReady() ? "aisha" : "browser",
         api: !!(env("API_KEY") || env("APP_PASSWORD")),
       },
       providers: order().map((id) => ({ id, name: PROVIDERS[id].name, model: modelsOf(PROVIDERS[id]).join(", "), configured: keysOf(PROVIDERS[id]).length > 0 })),
@@ -730,6 +835,7 @@ export default async (req) => {
 
   if (path === "/api/chat") return handleChat(req);
   if (path === "/api/image") return handleImage(req);
+  if (path === "/api/intent") return handleIntent(req);
   if (path === "/api/stt") return handleSTT(req);
   if (path === "/api/tts") return handleTTS(req);
   if (path === "/api/companion") return handleCompanion(req);

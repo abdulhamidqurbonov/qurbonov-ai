@@ -207,6 +207,31 @@ function detect(text, images, chat) {
   return 'chat'
 }
 
+// So'z qoliplari ishonchsiz bo'lsa — AI'dan so'raymiz (rasm bilan bog'liq noaniq holatlar)
+const IMG_WORD_RE = /rasm|surat|tasvir|foto|logo|image|picture|photo|картин|фото|изображ|рисун/i
+async function smartIntent(text, images, chat) {
+  const quick = detect(text, images, chat)
+  if (!text) return quick
+  const last = lastGenerated(chat)
+  const ambiguous =
+    (images.length > 0 && !/\?\s*$/.test(text)) ||
+    (!images.length && last && text.length < 260 && quick !== 'draw') ||
+    (!images.length && quick === 'chat' && IMG_WORD_RE.test(text)) ||
+    (!images.length && quick === 'draw' && QUESTION_RE.test(text))
+  if (!ambiguous) return quick
+  const prevUser = [...chat.messages].reverse().find((m, i) => m.role === 'user' && i > 0)?.content || ''
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 5000)
+    const r = await fetch('/api/intent', { method: 'POST', signal: ctrl.signal, headers: H(), body: JSON.stringify({ text, hasImages: images.length > 0, hasLastImage: !!last, prev: prevUser }) })
+    clearTimeout(t)
+    const d = await r.json()
+    const map = { draw: 'draw', edit: 'edit', vision: 'vision', edit_last: 'edit-last', chat: images.length ? 'vision' : 'chat' }
+    return map[d.intent] || quick
+  } catch { return quick }
+}
+// Tahrirda asl rasm nisbatini saqlaymiz
+const imgAspect = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i.naturalWidth / i.naturalHeight || 1); i.onerror = () => res(1); i.src = src })
+
 // ---------- Xabarlarni chizish ----------
 const IDEAS = [
   ['Rasm chiz', "Tog'lar orasida quyosh botishi, kinematografik rasm chizib ber"],
@@ -333,16 +358,21 @@ async function send(textArg, opts = {}) {
   if (textArg === undefined || opts.withAttach) { input.value = ''; autosize(); S.attach = []; renderTray(); input.placeholder = 'Xabar yozing yoki rasm yuklang…' }
 
   const chat = ensureChat(text || 'Rasm')
-  const intent = detect(text, images, chat)
-  const refFromLast = intent === 'edit-last' ? lastGenerated(chat) : null
-  chat.messages.push({ role: 'user', content: text, ...(images.length ? { images } : {}), ...(opts.voice ? { voice: true } : {}) })
+  const userMsg = { role: 'user', content: text, ...(images.length ? { images } : {}), ...(opts.voice ? { voice: true } : {}) }
+  chat.messages.push(userMsg)
   chat.updated = Date.now()
   S.chats = [chat, ...S.chats.filter((c) => c.id !== chat.id)]
   save(); renderList()
+  setBusy(true); renderFeed(`<div class="msg ai">${AVA}<div class="wrap"><div class="thinking"><div class="dots"><i></i><i></i><i></i></div>Tushunyapman…</div></div></div>`)
+  const intent = await smartIntent(text, images, { messages: chat.messages.slice(0, -1) })
+  setBusy(false)
+  if (S.activeId !== chat.id || !chat.messages.includes(userMsg)) return
+  userMsg.intent = intent; save()
+  const refFromLast = intent === 'edit-last' ? lastGenerated(chat) : null
 
   if (intent === 'draw') return draw(chat, text)
   if (intent === 'edit') return draw(chat, text, images)
-  if (intent === 'edit-last') return draw(chat, text, [refFromLast])
+  if (intent === 'edit-last' && refFromLast) return draw(chat, text, [refFromLast])
   return ask(chat)   // chatdagi mikrofon: javob odatdagidek (to'liq) yoziladi
 }
 
@@ -354,8 +384,9 @@ async function draw(chat, prompt, refs = []) {
     <div class="gen loading"><div class="thinking"><div class="dots"><i></i><i></i><i></i></div>${editing ? 'Rasm tahrirlanyapti…' : 'Rasm chizilyapti…'}</div></div></div></div>`)
   const ctrl = new AbortController(); S.ctrl = ctrl
   try {
-    const small = editing ? await Promise.all(refs.map((u) => shrink(u, 504, 0.9))) : []
-    const res = await fetch('/api/image', { method: 'POST', signal: ctrl.signal, headers: H(), body: JSON.stringify({ prompt, images: small }) })
+    const small = editing ? await Promise.all(refs.map((u) => shrink(u, 500, 0.92))) : []
+    const aspect = editing ? await imgAspect(refs[0]) : 0
+    const res = await fetch('/api/image', { method: 'POST', signal: ctrl.signal, headers: H(), body: JSON.stringify({ prompt, images: small, aspect }) })
     if (res.status === 401) { showGate(); throw new Error("Parol noto'g'ri — qayta kiriting") }
     const d = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(d.detail || `Xato ${res.status}`)
@@ -697,7 +728,7 @@ async function voiceHeard(r, spoke) {
     const chat = ensureChat(text)
     chat.messages.push({ role: 'user', content: text, voice: true })
     chat.updated = Date.now(); save(); renderList()
-    let intent = detect(text, [], chat)
+    let intent = await smartIntent(text, [], { messages: chat.messages.slice(0, -1) })
     if (intent === 'draw' || intent === 'edit-last') {
       const res = await draw(chat, text, intent === 'edit-last' ? [lastGenerated(chat)] : [])
       if (!V.on) return
@@ -913,7 +944,7 @@ $('feed').addEventListener('click', async (e) => {
     const c = active(); if (!c) return
     const last = c.messages[c.messages.length - 1]
     if (last?.role !== 'user') return ask(c)
-    const intent = detect(last.content, last.images || [], { messages: c.messages.slice(0, -1) })
+    const intent = last.intent || detect(last.content, last.images || [], { messages: c.messages.slice(0, -1) })
     if (intent === 'draw') draw(c, last.content)
     else if (intent === 'edit') draw(c, last.content, last.images)
     else if (intent === 'edit-last') draw(c, last.content, [lastGenerated({ messages: c.messages.slice(0, -1) })])
