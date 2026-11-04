@@ -106,8 +106,12 @@ addEventListener('resize', resize); resize()
 if (!W.cam) { cam.x = 0; cam.y = -N * TH / 2 }
 
 const iso = (x, y) => ({ x: (x - y) * TW / 2, y: (x + y) * TH / 2 })
-const toScreen = (wx, wy) => ({ x: (wx + cam.x) * cam.z + VW / 2, y: (wy + cam.y) * cam.z + VH / 2 })
+// 3D rejimda (world3d.js) ekran nuqtalari 3D kameradan olinadi
+const R3 = () => (window.__r3?.on ? window.__r3 : null)
+const isoToGrid = (wx, wy) => ({ gx: (wx / (TW / 2) + wy / (TH / 2)) / 2, gy: (wy / (TH / 2) - wx / (TW / 2)) / 2 })
+const toScreen = (wx, wy) => { const r = R3(); if (r) { const g = isoToGrid(wx, wy); return r.project(g.gx, g.gy) } return { x: (wx + cam.x) * cam.z + VW / 2, y: (wy + cam.y) * cam.z + VH / 2 } }
 function screenToGrid(sx, sy) {
+  if (R3()) return R3().pick(sx, sy)
   const wx = (sx - VW / 2) / cam.z - cam.x, wy = (sy - VH / 2) / cam.z - cam.y
   const gx = (wx / (TW / 2) + wy / (TH / 2)) / 2, gy = (wy / (TH / 2) - wx / (TW / 2)) / 2
   return { x: Math.round(gx), y: Math.round(gy), fx: gx, fy: gy }
@@ -299,6 +303,7 @@ let ghost = null, mode = null
 function frame(time) {
   requestAnimationFrame(frame)
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
+  if (R3()) { ctx.clearRect(0, 0, VW, VH); R3().render(time, ctx); drawFloaters(); return }
   // osmon/fon
   const g = ctx.createLinearGradient(0, 0, 0, VH); g.addColorStop(0, '#6fae55'); g.addColorStop(1, '#5e9a49')
   ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH)
@@ -330,7 +335,10 @@ function frame(time) {
   // tun
   if (isNight()) { ctx.fillStyle = 'rgba(20,24,70,.35)'; ctx.fillRect(0, 0, VW, VH) }
   drawArrows()
-  // suzuvchi yozuvlar
+  drawFloaters()
+}
+
+function drawFloaters() {
   const now = performance.now()
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i], k = (now - f.t) / 1400
@@ -530,11 +538,11 @@ cv.addEventListener('pointermove', (e) => {
     const [a, b] = [...pts.values()]; const d0 = Math.hypot(a.x - b.x, a.y - b.y)
     p.x = e.clientX; p.y = e.clientY
     const [a2, b2] = [...pts.values()]; const d1 = Math.hypot(a2.x - b2.x, a2.y - b2.y)
-    if (d0 > 0) cam.z = clamp(cam.z * d1 / d0, 0.45, 2.4); dragged = true; return
+    if (d0 > 0) { if (R3()) R3().zoom(d1 / d0); else cam.z = clamp(cam.z * d1 / d0, 0.45, 2.4) } dragged = true; return
   }
   const dx = e.clientX - p.x, dy = e.clientY - p.y
   if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) { dragged = true; cv.classList.add('drag') }
-  if (dragged) { cam.x += dx / cam.z; cam.y += dy / cam.z }
+  if (dragged) { if (R3()) R3().pan(dx, dy); else { cam.x += dx / cam.z; cam.y += dy / cam.z } }
   p.x = e.clientX; p.y = e.clientY
   if (mode === 'place') { const g = screenToGrid(e.clientX, e.clientY); const s = DEFS[ghost.type].size; ghost.x = g.x - (s > 1 ? 1 : 0); ghost.y = g.y - (s > 1 ? 1 : 0) }
 })
@@ -543,10 +551,12 @@ cv.addEventListener('pointerup', (e) => {
   if (dragged) { W.cam = cam; W.camSet = true; return }
   const g = screenToGrid(e.clientX, e.clientY)
   if (mode === 'place') { const s = DEFS[ghost.type].size; return place(g.x - (s > 1 ? 1 : 0), g.y - (s > 1 ? 1 : 0)) }
+  // 3-shaxs / 1-shaxs: sichqoncha (yoki barmoq) bosilsa — qilich bilan uradi
+  if (R3()?.playerMode?.() && e.pointerType !== 'touch') { R3().attack(); return }
   if (hitMonster(e.clientX, e.clientY)) return
   // Shinobu'ni bosish
   const pp = toScreen(iso(pet.x - 0.5, pet.y - 0.5).x, iso(pet.x - 0.5, pet.y - 0.5).y)
-  if (!pet.inside && Math.hypot(e.clientX - pp.x, e.clientY - (pp.y - 25 * cam.z)) < 22 * cam.z) return say(pick(["Hi-hi, nima bo'ldi?", "Meni chaqirdingizmi?", "Qurilish zo'r ketyapti!", "Menga ham donut olib keling!"]))
+  if (!pet.inside && (R3() ? R3().hitPet(e.clientX, e.clientY) : Math.hypot(e.clientX - pp.x, e.clientY - (pp.y - 25 * cam.z)) < 22 * cam.z)) return say(pick(["Hi-hi, nima bo'ldi?", "Meni chaqirdingizmi?", "Qurilish zo'r ketyapti!", "Menga ham donut olib keling!"]))
   const b = buildingAt(g.x, g.y)
   if (b && !b.building && b.type === 'barracks') return openArmy()
   if (b && !b.building && b.type === 'guild') return openGuild()
@@ -557,7 +567,7 @@ cv.addEventListener('pointerup', (e) => {
   closePanel()
 })
 cv.addEventListener('pointercancel', (e) => pts.delete(e.pointerId))
-cv.addEventListener('wheel', (e) => { e.preventDefault(); cam.z = clamp(cam.z * (e.deltaY < 0 ? 1.1 : 0.9), 0.45, 2.4); W.cam = cam }, { passive: false })
+cv.addEventListener('wheel', (e) => { e.preventDefault(); if (R3()) return R3().zoom(e.deltaY < 0 ? 1.1 : 0.9); cam.z = clamp(cam.z * (e.deltaY < 0 ? 1.1 : 0.9), 0.45, 2.4); W.cam = cam }, { passive: false })
 addEventListener('keydown', (e) => { if (e.key === 'Escape') { endPlace(); closePanel() } })
 
 $('buildBtn').onclick = openBuild
@@ -714,6 +724,7 @@ function raidTick(dt) {
 }
 function hitMonster(sx, sy) {
   if (!raid || raid.done) return false
+  if (R3()) { const m = R3().pickMonster(sx, sy); if (m) { m.hp -= 3 + playerLevel(); m.hit = performance.now(); const p = iso(m.x, m.y); floatText(p.x, p.y, `-${3 + playerLevel()}`, '#ff7a6b') } return !!m }
   for (const m of raid.mons) {
     if (m.hp <= 0) continue
     const p = iso(m.x - 0.5, m.y - 0.5), c = toScreen(p.x, p.y)
@@ -970,4 +981,6 @@ function welcome() {
 
 welcome()
 requestAnimationFrame(frame)
-window.__world = { W, cam, pet, iso, toScreen, canPlace, startRaid: () => startRaid(), get raid() { return raid }, openArmy: () => openArmy(), openGuild: () => openGuild() }   // sinov uchun
+window.__world = { W, cam, pet, iso, toScreen, canPlace, DEFS, UNITS, MON, startRaid: () => startRaid(), get raid() { return raid }, get ghost() { return ghost }, isNight, castleLvl,
+  openArmy: () => openArmy(), openGuild: () => openGuild(), get bubble() { return pet.say && performance.now() < pet.sayT ? pet.say : '' } }
+dispatchEvent(new Event('world-ready'))   // sinov uchun
