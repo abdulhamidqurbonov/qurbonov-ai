@@ -90,6 +90,16 @@ python run.py
   Ism va xarakterni `public/companion.js` dagi `CHARS` da o'zgartirasiz.
 - **Ko'rinish:** soch, ko'z va kiyim rangini o'zgartirish (Sozlamalar → Ko'rinishini o'zgartirish).
 
+## Shinobu olami (3.1)
+- Chap menyu → **Shinobu olami** (`/world.html`). Bo'sh yerda noldan qurasiz: Shinobu uyi → Qasr → Ferma, Yog'ochxona, Kon, Bozor, Favvora…
+- Resurslar o'zi yig'iladi (sayt yopiq bo'lsa ham, 12 soatgacha). Daraxt/qoyani bossangiz — yog'och/tosh.
+- Yog'ochxona o'rmon yonida, Kon qoyalar yonida tezroq ishlaydi. Qasr darajasi — ombor sig'imi va boshqa binolar darajasi chegarasi.
+- Kechasi Shinobu uyiga kirib uxlaydi. "Ovqatlantirish" — omborimizdagi ovqatdan beradi (asosiy saytdagi qorni to'yadi).
+- **Qo'shin (3.2):** Kazarmada Askar, Kamonchi (2-daraja), Ritsar (3-daraja). Qasr qurilgach har 18–40 daqiqada o'rmondan maxluqlar (ko'rshapalak, bo'ri, goblin, trol) hujum qiladi.
+  Sahifa ochiq bo'lsa — jonli jang: maxluqlarni bosib urasiz, minoralar o'q uzadi, devorlar zarbani oladi. Yopiq bo'lsa — avtomatik hisoblanadi.
+  Asosiy saytda Shinobu ba'zan (har doim emas) "Hujum! Qutqaring!" deydi.
+- **Gildiya (3.3):** topshiriqlar (qurish, maxluq yengish, resurs to'plash…), mukofot: resurs, tajriba, Shinobu uchun sovg'a. Daraja va tajriba tizimi.
+
 ## Animatsiyalar (Mixamo)
 - `public/anims/` ichida: walk, idle, cheer, kiss, fight, bow, surprised, scared, think, clap, yawn, wave, angry, shy, jump, cry, bored, sleep, sleep-restless.
 - Yangi qo'shish: Mixamo → FBX Binary, Without Skin, 30 FPS → shu papkaga nom bilan qo'ying (`laugh.fbx`, `dance.fbx`, `sad.fbx`, `eat.fbx`, `stretch.fbx` ham ishlaydi).

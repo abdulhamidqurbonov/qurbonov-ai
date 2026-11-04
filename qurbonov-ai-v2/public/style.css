@@ -655,3 +655,4 @@ kbd { font: 500 10.5px 'JetBrains Mono', monospace; color: var(--faint); border:
 .pet-panel .pp-grid span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pet-panel { width: 300px; }
 .pet-back .prop svg { width: 100%; height: auto; display: block; }
+a.link-btn { text-decoration: none; }

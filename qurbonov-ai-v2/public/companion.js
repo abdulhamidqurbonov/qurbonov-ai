@@ -655,6 +655,16 @@ function tick() {
   // Uyqu
   if (P.energy < 12) { petSay(pick(LINES.fallAsleep), { face: 'sleepy', pose: 'yawn', poseMs: 2000 }); setTimeout(goSleep, 2200); return }
   if (P.energy < 25 && now - P.lastSleepyAsk > 5 * 60000) { P.lastSleepyAsk = now; savePet(); petSay(pick(LINES.sleepy), { face: 'sleepy', pose: 'yawn', poseMs: 2500 }); return }
+  // Shinobu olamiga hujum (har doim emas — ba'zan aytadi)
+  const Wd = store.get('world', null)
+  if (Wd?.nextRaid && now >= Wd.nextRaid && now < Wd.nextRaid + 4 * 60000 && store.get('raidAlert', 0) !== Wd.nextRaid) {
+    store.set('raidAlert', Wd.nextRaid)
+    if (Math.random() < 0.6) {
+      petSay(pick(["Hujum! Olamimizga maxluqlar bostirib kelyapti! Meni qutqaring!", "Yordam bering! O'rmondan bo'rilar kelyapti, qasrimizni himoya qiling!", "Voy, maxluqlar! Tezroq Shinobu olamiga kiring!"]), { face: 'scared', pose: 'scared', poseMs: 3500, loud: true })
+      toast("Shinobu olamiga hujum! Chap menyu → Shinobu olami")
+      return
+    }
+  }
   // Zerikish
   if (now - P.lastTouch > 15 * 60000 && now - P.lastBored > 20 * 60000) { P.lastBored = now; savePet(); petSay(pick(LINES.bored), { face: P.sulking ? 'pout' : 'bored', pose: 'bored', poseMs: 5000 }); return }
   // O'zi yurish va mayda harakatlar (tirik ko'rinishi uchun)
