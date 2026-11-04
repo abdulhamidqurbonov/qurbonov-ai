@@ -100,6 +100,15 @@ python run.py
   Asosiy saytda Shinobu ba'zan (har doim emas) "Hujum! Qutqaring!" deydi.
 - **Gildiya (3.3):** topshiriqlar (qurish, maxluq yengish, resurs to'plash…), mukofot: resurs, tajriba, Shinobu uchun sovg'a. Daraja va tajriba tizimi.
 
+## 3D olam va o'yinchi (4.1–4.3)
+- Shinobu olami endi **3D** (Kenney Retro Fantasy Kit, CC0). O'ng yuqoridagi ⚙ — **3D/2D** va grafika: **Past / O'rta / Yuqori** (soyalar, aniqlik).
+- Kamera tugmasi: **Tepadan** (Clash kabi: surish, g'ildirak — kattalashtirish, ⟲⟳ — aylantirish) → **3-shaxs** → **1-shaxs**.
+- O'yinchi **Qurbonov** (`public/models/player.vrm`): WASD — yurish, Shift — yugurish, Probel — sakrash, F — qilich (ketma-ket: zarba → zarba → tepish). Telefonda joystik va ⚔ ⤒ tugmalari.
+- Maxluqlar yaqinlashsa sizga hujum qiladi; joningiz tugasa qasr yonida tirilasiz. Askarlar ham maxluqlarga yuguradi.
+- **Aholi va hayvonlar** (`public/creatures.js`, o'zimiz yasagan): dehqon, o'tinchi, konchi, savdogar, qishloq ahli — ishlaydi, yuk tashiydi, hujumda va kechasi uyga yashirinadi.
+  Fermada qo'y va tovuqlar, o'rmon chekkasida quyon va kiyiklar. Askarlar (qalqon, kamon, nayza) va maxluqlar (ko'rshapalak, bo'ri, goblin, trol) bo'g'imli, yurish/hujum/o'lish animatsiyasi bilan.
+- O'yinchi animatsiyalari: idle2, walk2, run, jump2, attack, attack2, kick, die (`public/anims/`).
+
 ## Animatsiyalar (Mixamo)
 - `public/anims/` ichida: walk, idle, cheer, kiss, fight, bow, surprised, scared, think, clap, yawn, wave, angry, shy, jump, cry, bored, sleep, sleep-restless.
 - Yangi qo'shish: Mixamo → FBX Binary, Without Skin, 30 FPS → shu papkaga nom bilan qo'ying (`laugh.fbx`, `dance.fbx`, `sad.fbx`, `eat.fbx`, `stretch.fbx` ham ishlaydi).
