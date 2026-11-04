@@ -51,7 +51,7 @@ const Games = {
     }
     this.active = g
     fn(g)
-    Pet.react('cheer', pick(["Boshladik! Yutqazsangiz menga shirinlik olib berasiz.", "Tayyormisiz? Men ayamayman!", "Qani, kim zo'r ekan ko'ramiz!"]))
+    Pet.react('fight', pick(["Boshladik! Yutqazsangiz menga shirinlik olib berasiz.", "Tayyormisiz? Men ayamayman!", "Qani, kim zo'r ekan ko'ramiz!"]))
   },
 }
 

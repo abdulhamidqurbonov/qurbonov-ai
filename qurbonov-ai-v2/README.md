@@ -90,6 +90,12 @@ python run.py
   Ism va xarakterni `public/companion.js` dagi `CHARS` da o'zgartirasiz.
 - **Ko'rinish:** soch, ko'z va kiyim rangini o'zgartirish (Sozlamalar → Ko'rinishini o'zgartirish).
 
+## Animatsiyalar (Mixamo)
+- `public/anims/` ichida: walk, idle, cheer, kiss, fight, bow, surprised, scared, think, clap, yawn, wave, angry, shy, jump, cry, bored, sleep, sleep-restless.
+- Yangi qo'shish: Mixamo → FBX Binary, Without Skin, 30 FPS → shu papkaga nom bilan qo'ying (`laugh.fbx`, `dance.fbx`, `sad.fbx`, `eat.fbx`, `stretch.fbx` ham ishlaydi).
+- Fayli yo'q harakatlar kod bilan yasalgan holatda qoladi. O'tirish — o'zining kodli holati.
+- Uyqu: avval bezovta yotadi; bir marta tegsangiz "nima bo'ldi?" deb tinch yotadi; yana tegsangiz uyg'onadi.
+
 ## Rasm
 - Chizish: FLUX.2 Klein 9B (Cloudflare) → FLUX.1 → Pollinations. "Telefon oboyi" desangiz tik, "banner" desangiz keng chizadi.
 - Tahrirlash: FLUX.2 Klein 9B → 4B, asl rasm nisbati saqlanadi.

@@ -16,6 +16,12 @@
     Cache-Control = "public, max-age=604800"
 
 [[headers]]
+  for = "/anims/*"
+  [headers.values]
+    Content-Type = "application/octet-stream"
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
   for = "/vendor/*"
   [headers.values]
     Cache-Control = "public, max-age=2592000"

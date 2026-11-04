@@ -114,7 +114,13 @@ function buildPet(animate = true) {
 
   C.av = Avatar3D.mount(el, PET.model, {
     onProgress: (k) => { const s = el.querySelector('.pet-load span'); if (s) s.textContent = Math.round(k * 100) + '%' },
-    onReady: () => { el.querySelector('.pet-load')?.remove(); for (const [g, hex] of Object.entries(P.tints || {})) C.av.setTint(g, hex); applyLook(); greet() },
+    onReady: () => {
+      el.querySelector('.pet-load')?.remove(); for (const [g, hex] of Object.entries(P.tints || {})) C.av.setTint(g, hex)
+      if (P.sleeping) { C.calm = true; C.av.setSleepVariant('calm') }
+      applyLook(); greet()
+      // ko'p ishlatiladigan animatsiyalarni sekin-asta oldindan yuklaymiz
+      ;['shy', 'angry', 'jump', 'think', 'sleep', 'sleep-restless', 'cry', 'clap', 'surprised', 'bored'].forEach((f, i) => setTimeout(() => C.av?.preload([f]), 3000 + i * 1500))
+    },
     onError: () => { const s = el.querySelector('.pet-load span'); if (s) s.textContent = 'model yo\'q' },
   })
   bindPet()
@@ -379,6 +385,8 @@ async function petTap() {
   showPill()
   if (C.rec) { const r = C.rec; r.spoke = true; petHeard(r, true); return }
   if (C.busy) { stopSpeaking(); C.av?.setTalking(false); return }
+  // uxlayotganda birinchi tegish — uyg'onmaydi, "nima bo'ldi?" deb tinchlanib yotadi; ikkinchisi — uyg'onadi
+  if (P.sleeping && !C.calm) { sleepCalm(); petSay(pickOf("Mm… nima bo'ldi?..", "Hm?.. zzz…", "Uyqum kelyapti… tegmang…"), { face: 'sleepy' }); return }
   if (P.sleeping) { const grumpy = P.energy < 60; wakeUp(); if (grumpy) { petSay(pick(LINES.grumpyWake), { face: 'pout', pose: 'puff', poseMs: 2500 }) } else petSay(pick(LINES.wake), { face: 'happy', pose: 'stretch', poseMs: 2200 }); return }
   if (!S.features.stt) { const f = C.pill.querySelector('.pet-type'); f.hidden = false; f.querySelector('input').focus(); placeUI(); return }
   stopSpeaking()
@@ -490,11 +498,16 @@ async function doAction(d) {
 }
 
 // ---------- Uyqu ----------
+// Uyqu: avval bezovta yotadi (u yoqdan bu yoqqa ag'darilib), tegib qo'ysangiz yoki biroz o'tsa — tinchgina yotadi
+let calmT = 0
 function goSleep() {
   if (C.pose === 'walk') return
   P.sleeping = true; P.sulking = false; savePet()
+  C.calm = false; C.av?.setSleepVariant('restless')
   setPose('sleep'); setFace('sleepy')
+  clearTimeout(calmT); calmT = setTimeout(sleepCalm, 90000)
 }
+function sleepCalm() { if (!P.sleeping) return; C.calm = true; C.av?.setSleepVariant('calm') }
 function wakeUp(silent) {
   if (!P.sleeping) return
   P.sleeping = false; savePet()
@@ -727,7 +740,7 @@ window.Pet = {
   react(kind, text) {
     if (!C.av) return
     const map = {
-      cheer: ['clap', 'excited', 1600], win: [pickOf('jump', 'clap', 'laugh'), 'excited', 2600], lose: [pickOf('tantrum', 'pout', 'puff'), 'angry', 2800],
+      cheer: ['clap', 'excited', 1600], fight: ['fight', 'smug', 2600], win: [pickOf('jump', 'clap', 'laugh'), 'excited', 2600], lose: [pickOf('tantrum', 'pout', 'puff'), 'angry', 2800],
       sad: ['cryStand', 'cry', 3000], think: ['think', 'relaxed', 1500], scared: ['scared', 'scared', 1500], surprised: ['surprised', 'surprised', 1400],
       smug: ['giggle', 'smug', 2000],
     }

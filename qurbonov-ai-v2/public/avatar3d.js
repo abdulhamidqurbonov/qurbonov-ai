@@ -6,6 +6,18 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '/vendor/three/three-vrm.module.js'
+import { loadMixamo } from '/mixamo.js'
+
+// Mixamo animatsiyalari (public/anims/*.fbx). Fayl bo'lmasa — kod bilan yasalgan harakat ishlaydi.
+// poza nomi → fayl; loop=false — bir marta o'ynab, oxirgi holatda qoladi
+const ANIMS = {
+  walk: { file: 'walk', inPlace: true }, stand: { file: 'idle' }, listen: { file: 'idle' }, lie: { file: 'sleep' },
+  cryStand: { file: 'cry' }, jump: { file: 'jump' }, shy: { file: 'shy' }, shycover: { file: 'shy' },
+  angry: { file: 'angry' }, tantrum: { file: 'angry' }, dance: { file: 'dance' }, yawn: { file: 'yawn' }, clap: { file: 'clap' }, eat: { file: 'eat' },
+  sad: { file: 'sad' }, think: { file: 'think' }, scared: { file: 'scared' }, surprised: { file: 'surprised' }, bow: { file: 'bow' },
+  stretch: { file: 'stretch' }, kiss: { file: 'kiss' }, cheer: { file: 'cheer' }, bored: { file: 'bored' }, fight: { file: 'fight' }, laugh: { file: 'laugh' },
+}
+const animMissing = new Set()
 
 const cache = new Map()
 const pointer = { x: 0, y: 0, t: 0 }
@@ -74,6 +86,7 @@ const POSES = {
   bored: { ...ARMS_DOWN, head: [0.05, 0, 0.28], spine: [0.05, 0, 0.04] },
   wiped: { ...ARMS_DOWN, head: [-0.15, 0, 0.08], spine: [-0.03, 0, 0], leftUpperArm: [0.3, 0, -1.25], rightUpperArm: [0.3, 0, 1.25] },
   pat: { ...ARMS_DOWN, head: [0.22, 0, 0.18], neck: [0.08, 0, 0], leftUpperArm: [0.35, 0, -1.25], rightUpperArm: [0.35, 0, 1.25] },
+  fight: { leftUpperArm: [-0.9, 0, -1.0], rightUpperArm: [-0.9, 0, 1.0], leftLowerArm: [0, -2.0, 0], rightLowerArm: [0, 2.0, 0], leftUpperLeg: [-0.2, 0, -0.15], rightUpperLeg: [0.1, 0, 0.15], leftLowerLeg: [0.3, 0, 0] },
   puff: { head: [0.05, -0.15, 0], leftUpperArm: [0.45, 0, -0.75], rightUpperArm: [0.45, 0, 0.75], leftLowerArm: [0, -2.0, 0], rightLowerArm: [0, 2.0, 0] },
 }
 // Hissiyot → VRM ifodalari
@@ -157,7 +170,11 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
       }
     })
     for (const [g, hex] of Object.entries(tints)) applyTint(g, hex)
+    st.mixer = new THREE.AnimationMixer(vrm.scene)
+    st.actions = {}
     resize()
+    // eng kerakli animatsiyalarni oldindan yuklab qo'yamiz
+    setTimeout(() => { for (const f of ['idle', 'walk', 'wave']) getAction(f) }, 400)
     onReady?.()
   }).catch((e) => onError?.(e))
 
@@ -170,6 +187,51 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
       m.color?.copy(c)
       m.shadeColorFactor?.copy?.(c.clone().multiplyScalar(0.72))
     }
+  }
+  // Mixamo harakatini olish (bir marta yuklanadi)
+  function getAction(file, inPlace) {
+    if (!st.vrm || animMissing.has(file)) return null
+    if (st.actions[file]) return st.actions[file] === 'loading' ? null : st.actions[file]
+    st.actions[file] = 'loading'
+    loadMixamo(`/anims/${file}.fbx`, st.vrm, { inPlace }).then((clip) => {
+      if (!st.alive) return
+      st.actions[file] = st.mixer.clipAction(clip)
+    }).catch(() => { animMissing.add(file); delete st.actions[file] })
+    return null
+  }
+  let curAction = null
+  st.overlay = null; st.sleepVariant = 'calm'
+  function syncAction() {
+    let want = null
+    if (st.overlay) {
+      if (st.t > st.overlay.until) st.overlay = null
+      else want = st.overlay.action
+    }
+    if (!want) {
+      const a = ANIMS[st.pose]
+      const file = st.pose === 'lie' && st.sleepVariant === 'restless' && !animMissing.has('sleep-restless') ? 'sleep-restless' : a?.file
+      want = file ? getAction(file, a?.inPlace) : null
+    }
+    if (want === curAction) return
+    const slow = st.pose === 'lie' ? 1.4 : 0.35   // uyquda birdan harakatlanib ketmasin
+    if (curAction) curAction.fadeOut(slow)
+    if (want) {
+      want.enabled = true
+      if (!want.isRunning() || want.getEffectiveWeight() < 0.05) want.reset()
+      want.setEffectiveWeight(1).fadeIn(curAction ? slow : 0.25).play()
+    }
+    // kod harakatiga qaytsak — joriy suyak holatidan silliq davom etamiz
+    if (!want && curAction) for (const b of BONES) { const n = N(b); if (n) { const e = new THREE.Euler().setFromQuaternion(n.quaternion); st.cur[b] = [e.x, e.y, e.z] } }
+    curAction = want
+  }
+  // Bir martalik harakat (qo'l silkitish va h.k.) — tugagach oldingi holatga qaytadi
+  function playOnce(file) {
+    const act = getAction(file)
+    if (!act) return false
+    act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true
+    act.reset()
+    st.overlay = { action: act, until: st.t + Math.max(0.6, act.getClip().duration - 0.35) }
+    return true
   }
   const N = (name) => st.vrm?.humanoid?.getNormalizedBoneNode(name)
   const setExpr = (name, v) => { try { st.vrm?.expressionManager?.setValue(name, v) } catch { /* yo'q */ } }
@@ -222,9 +284,9 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     st.poseT += dt
     // yotish: butun tana yonboshlab yerga yotadi
     st.lieCur = lerp(st.lieCur, P.lie ? 1 : 0, 1 - Math.pow(0.02, dt))
-    const L = st.lieCur
-    vrm.scene.rotation.z = L * Math.PI / 2
-    vrm.scene.position.set(L * st.height * 0.5, L * 0.22, 0)
+    const L = st.lieCur, Lrot = curAction && P.lie ? 0 : L   // Mixamo yotish animatsiyasi bo'lsa, tanani o'zimiz aylantirmaymiz
+    vrm.scene.rotation.z = Lrot * Math.PI / 2
+    vrm.scene.position.set(Lrot * st.height * 0.5, Lrot * 0.22, 0)
     frameCamera()
 
     // --- maqsad burchaklar ---
@@ -314,14 +376,22 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
 
     // --- silliq o'tish ---
     const k = 1 - Math.pow(0.0015, dt)   // ~0.25 @60fps
-    for (const b of BONES) {
+    syncAction()
+    const clipOn = !!curAction
+    if (clipOn) {
+      st.mixer.update(dt)
+      // bosh sichqonchaga ozgina qaraydi (animatsiya ustidan)
+      const hn = N('head')
+      if (hn && !sleeping) { const e = new THREE.Euler(-dy * 0.15, dx * 0.25, 0); hn.quaternion.multiply(new THREE.Quaternion().setFromEuler(e)) }
+    } else st.mixer?.update(dt)
+    if (!clipOn) for (const b of BONES) {
       const node = N(b); if (!node) continue
       const c = st.cur[b], tg = target[b]
       for (let i = 0; i < 3; i++) c[i] = lerp(c[i], tg[i], k)
       node.rotation.set(c[0], c[1], c[2])
     }
     const hipsN = N('hips')
-    if (hipsN) {
+    if (hipsN && !clipOn) {
       st.dropCur = lerp(st.dropCur || 0, P.drop || 0, k * 0.8)
       hipsN.position.y = st.hipsBase * (1 - st.dropCur) + (st.jumpY || 0) + Math.abs(Math.sin(wp)) * 0.025 * wa + (st.pose === 'dance' ? Math.abs(Math.sin(t * 5.2)) * 0.03 : 0)
     }
@@ -376,10 +446,14 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
     setTint: applyTint,
     get pose() { return st.pose },
     get lying() { return st.lieCur > 0.5 },
+    get clip() { return curAction?.getClip().name || null },
     setFace(f) { st.face = FACES[f] ? f : 'neutral' },
     setTalking(v) { st.talking = !!v },
     setFacing(d) { st.facing = d },
-    wave() { st.waveT = 0 },
+    wave() { if (!playOnce('wave')) st.waveT = 0 },
+    playOnce,
+    setSleepVariant(v) { st.sleepVariant = v },
+    preload(files) { for (const f of files) getAction(f) },
     nod() { st.nodT = 0 },
     anchor,
     ready: () => !!st.vrm,
