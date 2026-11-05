@@ -128,6 +128,7 @@ function init() {
     const tiles = G.W.tiles
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const t = tiles[y * N + x]
+      if ((t.k === 'tree' || t.k === 'rock') && custom[t.k]) { const o = customPiece(t.k, t.k === 'tree' ? 0.8 + t.v * 0.4 : 0.6 + t.v * 0.3); o.position.set(x, 0, y); o.rotation.y = t.v * 6; deco.add(o); continue }
       if (t.k === 'tree') {
         // past-poligonli daraxt: qarag'ay yoki dumaloq
         const tr = new THREE.Group(), k = 0.75 + t.v * 0.5
@@ -215,9 +216,60 @@ function init() {
     }
     return g
   }
+  // O'zingiz yasagan modellar: public/models/world/list.json → {"house": "uy.glb", "tree": "daraxt.glb", ...}
+  // Blender / Unity'dan .glb qilib eksport qiling — o'lchami katakka avtomatik moslanadi.
+  const custom = {}
+  fetch('/models/world/list.json').then((r) => (r.ok ? r.json() : {})).then((list) => Promise.all(Object.entries(list).map(([k, f]) =>
+    new GLTFLoader().loadAsync('/models/world/' + f).then((g) => {
+      const s = g.scene
+      s.traverse((o) => { if (o.isMesh) { o.castShadow = !!Q.shadow; o.receiveShadow = !!Q.shadow } })
+      const box = new THREE.Box3().setFromObject(s), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3())
+      const wrap = new THREE.Group(); s.position.set(-c.x, -box.min.y, -c.z); wrap.add(s)
+      wrap.userData.fit = 1 / Math.max(sz.x, sz.z, 1e-3); custom[k] = wrap
+    }).catch(() => {}))).then(() => { if (Object.keys(custom).length && kitReady) rebuildAll() })).catch(() => {})
+  function customPiece(k, size) {
+    const src = custom[k]; if (!src) return null
+    const o = src.clone(true); o.scale.setScalar(src.userData.fit * size * 0.95); return o
+  }
   function rebuildBuildings() {
     while (bGroup.children.length) bGroup.remove(bGroup.children[0])
-    for (const b of G.W.b) { const o = makeBuilding(b); o.userData.b = b; bGroup.add(o) }
+    for (const b of G.W.b) {
+      let o = null
+      if (!b.building && custom[b.type]) { const s = G.DEFS[b.type].size; o = new THREE.Group(); o.position.set(b.x + (s - 1) / 2, 0, b.y + (s - 1) / 2); o.add(customPiece(b.type, s)) }
+      if (!o) o = makeBuilding(b)
+      // har bino o'z materialiga ega — kamera yaqinida shaffof qilish uchun
+      o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.userData.op = m.material.opacity; m.userData.tr = m.material.transparent } })
+      o.userData.b = b; o.userData.fade = 1; bGroup.add(o)
+    }
+  }
+  // Kamera bilan o'yinchi orasidagi yoki kameraga juda yaqin binolar shaffof bo'ladi
+  const fadeRay = new THREE.Raycaster()
+  function fadeBuildings() {
+    const on = camMode !== 'top' && player
+    let hits = new Set()
+    if (on) {
+      const eye = new THREE.Vector3(PL.x, PL.y + 0.45, PL.z), dir = eye.clone().sub(camera.position), len = dir.length(); dir.normalize()
+      fadeRay.set(camera.position, dir); fadeRay.far = Math.max(0.1, len - 0.2)
+      for (const h of fadeRay.intersectObjects(bGroup.children, true)) { let o = h.object; while (o.parent && o.parent !== bGroup) o = o.parent; hits.add(o) }
+    }
+    // daraxt va toshlar ham: kameraga juda yaqin bo'lsa shaffof
+    for (const o of deco.children) {
+      const near = on && Math.hypot(camera.position.x - o.position.x, camera.position.z - o.position.z) < 0.7
+      const want = near ? 0.25 : 1, f0 = o.userData.fade ?? 1
+      if (Math.abs(f0 - want) < 0.01) continue
+      if (!o.userData.own) { o.traverse((m) => { if (m.isMesh) m.material = m.material.clone() }); o.userData.own = true }
+      const f = Math.abs(f0 - want) < 0.05 ? want : lerp(f0, want, 0.25); o.userData.fade = f
+      o.traverse((m) => { if (m.isMesh) { m.material.transparent = f < 1; m.material.opacity = f; m.material.depthWrite = f >= 1 } })
+    }
+    for (const g of bGroup.children) {
+      const b = g.userData.b, s = G.DEFS[b.type].size
+      const near = on && Math.hypot(camera.position.x - g.position.x, camera.position.z - g.position.z) < s * 0.6 + 0.55
+      const want = on && (near || hits.has(g)) ? 0.22 : 1
+      if (Math.abs(g.userData.fade - want) < 0.01) continue
+      g.userData.fade = lerp(g.userData.fade, want, 0.25); if (Math.abs(g.userData.fade - want) < 0.02) g.userData.fade = want
+      const f = g.userData.fade
+      g.traverse((m) => { if (!m.isMesh) return; m.material.transparent = f < 1 || m.userData.tr; m.material.opacity = (m.userData.op ?? 1) * f; m.material.depthWrite = f >= 1; m.castShadow = f >= 1 && !!Q.shadow })
+    }
   }
   function rebuildAll() { buildGround(); buildDeco(); rebuildBuildings(); tilesKey = tkey(); bKey = bkey() }
   const tkey = () => G.W.tiles.map((t) => t.k[0]).join('')
@@ -239,17 +291,34 @@ function init() {
     const box = new THREE.Box3().setFromObject(vrm.scene); const k = height / (box.max.y - box.min.y)
     holder.scale.setScalar(k)
     const mixer = new THREE.AnimationMixer(vrm.scene)
-    const ch = { vrm, holder, mixer, acts: {}, cur: null }
-    ch.play = async (file, { fade = 0.3, inPlace = true } = {}) => {
+    const ch = { vrm, holder, mixer, acts: {}, pend: {}, cur: null, height }
+    ch.play = async (file, { fade = 0.3 } = {}) => {
       if (ch.want === file) return; ch.want = file
-      if (!ch.acts[file]) { try { ch.acts[file] = mixer.clipAction(await loadMixamo(`/anims/${file}.fbx`, vrm, { inPlace })) } catch { return } }
-      if (ch.want !== file) return
-      const a = ch.acts[file]; a.reset().setEffectiveWeight(1).fadeIn(fade).play(); ch.cur?.fadeOut(fade); ch.cur = a
+      const a = await getAct(ch, file)
+      if (!a || ch.want !== file) return
+      a.setLoop(THREE.LoopRepeat, Infinity); a.clampWhenFinished = false
+      a.reset().setEffectiveWeight(1).fadeIn(fade).play(); if (ch.cur && ch.cur !== a) ch.cur.fadeOut(fade); ch.cur = a
     }
     return ch
   }
+  // Fayl topilmasa (yuklanmagan bo'lsa) — o'xshash animatsiya bilan almashtiriladi, T-poza bo'lib qolmaydi
+  const FALLBACK = { idle2: 'idle', walk2: 'walk', run: 'walk2', jump2: 'jump', attack: 'fight', attack2: 'attack', kick: 'attack', die: 'cry' }
+  // Oyoq sirpanmasligi uchun: animatsiya tezligi yurish tezligiga moslanadi (rootSpeed — o'lchab olingan)
+  function getAct(ch, file) {
+    if (!ch.pend[file]) ch.pend[file] = (async () => {
+      let name = file, clip = null
+      for (let i = 0; i < 3 && name && !clip; i++) { try { clip = (await loadMixamo(`/anims/${name}.fbx`, ch.vrm, { inPlace: true })).clone() } catch { name = FALLBACK[name] } }
+      if (!clip) return null
+      const a = ch.mixer.clipAction(clip); ch.acts[file] = a; return a
+    })()
+    return ch.pend[file]
+  }
+  // Mixamo klipining tabiiy yurish tezligi (bo'y uzunligiga nisbatan), sirpanishni yo'qotish uchun
+  const NATURAL = { walk: 0.87, walk2: 0.87, run: 2.6 }   // o'lchangan: oyoq yerga tekkanda bo'y/sek
+  const setSpeed = (ch, file, speed) => { const a = ch.acts[file]; if (a && NATURAL[file]) a.timeScale = Math.max(0.6, Math.min(1.8, speed / (NATURAL[file] * ch.height))) }
   let shino = null
-  loadChar('/models/vampira.vrm', 0.85).then((c) => { shino = c; scene.add(c.holder); c.play('idle') }).catch(() => {})
+  const SH = { x: 0, z: 0, ry: 0, follow: false }
+  loadChar('/models/vampira.vrm', 0.62).then((c) => { shino = c; scene.add(c.holder); SH.x = G.pet.x - 0.5; SH.z = G.pet.y - 0.5; c.play('idle') }).catch(() => {})
 
   // ================= 4.2 O'YINCHI: Qurbonov (3-shaxs / 1-shaxs) =================
   const PL = { name: store.get('playerName', 'Qurbonov'), x: 9.5, z: 11.5, yaw: Math.PI / 4, pitch: 0.25, vy: 0, y: 0, hp: 100, maxHp: 100, dead: 0, combo: 0, busyUntil: 0, hitAt: 0, hitDone: true, hurtT: 0 }
@@ -258,12 +327,12 @@ function init() {
   Object.assign(PL, store.get('player3d', {}), { hp: 100, dead: 0, vy: 0, y: 0 })
   let camMode = store.get('camMode', 'top')   // top | third | first
   let player = null, sword = null
-  loadChar('/models/player.vrm', 0.95).then((c) => {
+  loadChar('/models/player.vrm', 0.7).then((c) => {
     player = c; scene.add(c.holder); c.play('idle2')
     try { c.vrm.firstPerson?.setup() } catch { /* */ }
     // qilich: o'ng qo'lga ulanadi
     sword = new THREE.Group()
-    const blade = mesh(new THREE.BoxGeometry(0.025, 0.55, 0.008), mat('#e8edf5', { metalness: 0.8, roughness: 0.25 }), 0, 0.33, 0)
+    const blade = mesh(new THREE.BoxGeometry(0.025, 0.55, 0.008), mat('#dfe6ef', { metalness: 0.35, roughness: 0.3, emissive: '#2a3038' }), 0, 0.33, 0)
     const guard = mesh(new THREE.BoxGeometry(0.12, 0.02, 0.03), mat('#d9b13b', { metalness: 0.6 }), 0, 0.05, 0)
     const grip = mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.1, 6), mat('#3a2418'), 0, 0, 0)
     sword.add(blade, guard, grip)
@@ -304,14 +373,16 @@ function init() {
     if (now < PL.busyUntil - 250) return
     const f = COMBO[PL.combo % 3]; PL.combo++
     const a = player.acts[f]
+    // sichqoncha bilan qaralayotgan bo'lsa — qaragan tomonga uradi
+    if (camMode === 'third' && locked()) player.holder.rotation.y = PL.yaw + Math.PI
     playOnce(player, f)
     const dur = (a?.getClip().duration || 1.1) * 1000
     PL.busyUntil = now + Math.min(dur, 1300); PL.hitAt = now + Math.min(dur * 0.45, 500); PL.hitDone = false
     clearTimeout(PL.comboT); PL.comboT = setTimeout(() => { PL.combo = 0 }, 1800)
   }
   async function playOnce(ch, file) {
-    if (!ch.acts[file]) { try { ch.acts[file] = ch.mixer.clipAction(await loadMixamo(`/anims/${file}.fbx`, ch.vrm, { inPlace: true })) } catch { return } }
-    const a = ch.acts[file]; a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true
+    const a = await getAct(ch, file); if (!a) return
+    a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.timeScale = 1
     a.reset().setEffectiveWeight(1).fadeIn(0.12).play(); if (ch.cur && ch.cur !== a) ch.cur.fadeOut(0.12); ch.cur = a; ch.want = file
   }
   function doHit() {
@@ -321,7 +392,7 @@ function init() {
     for (const m of raid.mons) {
       if (m.hp <= 0) continue
       const dx = m.x - 0.5 - PL.x, dz = m.y - 0.5 - PL.z, d = Math.hypot(dx, dz)
-      if (d < 1.15 && (dx * fx + dz * fz) / (d || 1) > 0.1) { const dmg = 6 + (G.W.lvl || 1) * 2 + (PL.combo % 3 === 0 ? 4 : 0); m.hp -= dmg; m.hit = performance.now(); hit++ }
+      if (d < 0.95 && (dx * fx + dz * fz) / (d || 1) > 0.1) { const dmg = 6 + (G.W.lvl || 1) * 2 + (PL.combo % 3 === 0 ? 4 : 0); m.hp -= dmg; m.hit = performance.now(); hit++ }
     }
     if (hit) { G.W.stats.taps = (G.W.stats.taps || 0) + hit }
   }
@@ -340,11 +411,11 @@ function init() {
     }
     const moving = Math.hypot(mx, mz) > 0.1
     const running = moving && (keys.ShiftLeft || keys.ShiftRight || Math.hypot(joy.x, joy.y) > 0.85)
-    const sp = (running ? 2.6 : 1.3) * dt
+    const speed = running ? 1.7 : 0.75, sp = speed * dt
     if (moving && now > PL.busyUntil - 300) {
       const nx = PL.x + mx * sp, nz = PL.z + mz * sp
-      if (walkable(nx, PL.z)) PL.x = nx
-      if (walkable(PL.x, nz)) PL.z = nz
+      if (walkable(nx, PL.z) && !blocked(nx, PL.z)) PL.x = nx
+      if (walkable(PL.x, nz) && !blocked(PL.x, nz)) PL.z = nz
       if (camMode === 'third') player.holder.rotation.y = lerpAngle(player.holder.rotation.y, Math.atan2(mx, mz), 0.25)
     }
     if (camMode === 'first') player.holder.rotation.y = PL.yaw + Math.PI
@@ -367,7 +438,7 @@ function init() {
     if (PL.dead && now - PL.dead > 3500) { PL.dead = 0; PL.hp = PL.maxHp; if (hb) { PL.x = hb.x + 0.5; PL.z = hb.y + 2.3 } player.want = null }
     if (!raid && PL.hp < PL.maxHp) PL.hp = Math.min(PL.maxHp, PL.hp + 8 * dt)
     // animatsiya
-    if (!PL.dead && now > PL.busyUntil) player.play(moving ? (running ? 'run' : 'walk2') : 'idle2', { fade: 0.2 })
+    if (!PL.dead && now > PL.busyUntil) { const f = moving ? (running ? 'run' : 'walk2') : 'idle2'; player.play(f, { fade: 0.2 }); if (moving) setSpeed(player, f, speed) }
     player.mixer.update(dt); player.vrm.update(dt)
     if (sword) sword.visible = camMode !== 'top'
     if (time % 3000 < 20) store.set('player3d', { x: PL.x, z: PL.z, yaw: PL.yaw })
@@ -376,12 +447,12 @@ function init() {
   function cameraFor() {
     if (camMode === 'top' || !player) return false
     if (camMode === 'third') {
-      const eye = new THREE.Vector3(PL.x, PL.y + 0.75, PL.z)
+      const eye = new THREE.Vector3(PL.x, PL.y + 0.58, PL.z)
       const dir = new THREE.Vector3(Math.sin(PL.yaw) * Math.cos(PL.pitch), Math.sin(PL.pitch) + 0.15, Math.cos(PL.yaw) * Math.cos(PL.pitch)).normalize()
-      let d = PL.camD || 2.8
+      let d = PL.camD || 2.2
       // devor yoki bino orqasida qolmasin — kamerani yaqinlashtiramiz
       camRay.set(eye, dir); camRay.far = d
-      const hit = camRay.intersectObjects([bGroup, deco], true)[0]
+      const hit = camRay.intersectObjects([deco], true)[0]   // binolar esa shaffof bo'ladi
       if (hit) d = Math.max(0.6, hit.distance - 0.15)
       camera.position.copy(eye).addScaledVector(dir, d)
       camera.lookAt(eye)
@@ -415,11 +486,36 @@ function init() {
   function setCam(m) {
     camMode = m; store.set('camMode', m); camBtn.querySelector('span').textContent = LBL[m]
     document.body.classList.toggle('pl-mode', m !== 'top')
-    help.textContent = matchMedia('(pointer: coarse)').matches ? 'Joystik — yurish, ⚔ — urish, ⤒ — sakrash, ekranni suring — qarash' : 'WASD — yurish, Shift — yugurish, Probel — sakrash, sichqoncha tugmasi — urish, sichqonchani surib — qarash'
-    if (m === 'top') help.remove(); else { document.body.appendChild(help); setTimeout(() => help.remove(), 6000) }
+    help.innerHTML = matchMedia('(pointer: coarse)').matches ? 'Joystik — yurish, ⚔ — urish, ⤒ — sakrash, ekranni suring — qarash' : '<b>Ekranni bir marta bosing</b> — sichqoncha bilan qarash yoqiladi.<br>WASD — yurish · Shift — yugurish · Probel — sakrash<br>Chap tugma — qilich · O‘ng tugma — tepish · G‘ildirak — yaqin/uzoq · Esc — sichqonchani bo‘shatish'
+    if (m === 'top') { help.remove(); if (locked()) document.exitPointerLock?.() } else { document.body.appendChild(help); clearTimeout(help.t); help.t = setTimeout(() => help.remove(), 9000) }
     applyCamLayers()
   }
   camBtn.onclick = () => setCam({ top: 'third', third: 'first', first: 'top' }[camMode])
+  // ---------- Sichqoncha bilan boshqarish (PUBG kabi): qarash — sichqoncha, chap tugma — qilich, o'ng — tepish ----------
+  const cvTop = document.getElementById('cv')
+  function locked() { return document.pointerLockElement === cvTop }
+  const xh = document.createElement('div'); xh.className = 'xhair'; document.body.appendChild(xh)
+  document.addEventListener('pointerlockchange', () => { document.body.classList.toggle('locked', locked()); if (locked()) help.remove() })
+  document.addEventListener('mousemove', (e) => {
+    if (!locked() || camMode === 'top') return
+    PL.yaw -= e.movementX * 0.0026
+    PL.pitch = Math.max(-0.6, Math.min(0.9, PL.pitch + e.movementY * 0.002))
+  })
+  cvTop.addEventListener('contextmenu', (e) => { if (camMode !== 'top') e.preventDefault() })
+  function mouseClick(e) {
+    if (camMode === 'top' || !player) return false
+    if (!locked() && cvTop.requestPointerLock) { try { const r = cvTop.requestPointerLock(); r?.catch?.(() => {}) } catch { /* */ } return true }
+    if (e.button === 2) kick(); else attack()
+    return true
+  }
+  function kick() {
+    if (!player || PL.dead) return
+    const now = performance.now(); if (now < PL.busyUntil - 250) return
+    if (camMode === 'third' && locked()) player.holder.rotation.y = PL.yaw + Math.PI
+    playOnce(player, 'kick'); PL.busyUntil = now + 1000; PL.hitAt = now + 420; PL.hitDone = false
+  }
+  css.textContent += `.xhair{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.45);z-index:6;display:none;pointer-events:none}
+  body.locked.pl-mode .xhair{display:block} .pl-help b{color:#f4b544}`
   setCam(camMode)
   ui.querySelector('[data-a=atk]').addEventListener('pointerdown', (e) => { e.preventDefault(); attack() })
   ui.querySelector('[data-a=jmp]').addEventListener('pointerdown', (e) => { e.preventDefault(); jump() })
@@ -564,6 +660,54 @@ function init() {
     }
   }
 
+  // ---------- Fizika: hech kim bir-birining ichidan o'tib ketmaydi ----------
+  const RAD = { sheep: 0.2, chicken: 0.1, rabbit: 0.1, deer: 0.22 }
+  const PR = 0.17   // o'yinchi radiusi
+  function blocked(x, z) {   // maxluqlar o'yinchini to'sadi (yaqinlashishga yo'l qo'ymaydi)
+    const raid = G.raid; if (!raid) return false
+    for (const m of raid.mons) {
+      if (m.hp <= 0) continue
+      const r = PR + (m.type === 'troll' ? 0.3 : 0.2), mx = m.x - 0.5, mz = m.y - 0.5
+      if (Math.hypot(mx - x, mz - z) < r && Math.hypot(mx - x, mz - z) < Math.hypot(mx - PL.x, mz - PL.z)) return true
+    }
+    return false
+  }
+  function bodies() {
+    const list = []
+    for (const a of animals) list.push({ p: a.o.position, r: RAD[a.o.userData.type] || 0.15, a })
+    for (const f of folk) if (f.h.visible) list.push({ p: f.h.position, r: 0.13 })
+    for (const u of unitGroup.children) list.push({ p: u.position, r: 0.13 })
+    if (shino) list.push({ p: shino.holder.position, r: 0.14, sh: true })
+    return list
+  }
+  function collide() {
+    const list = bodies(), withPlayer = player && camMode !== 'top' && !PL.dead
+    const push = (b, ox, oz, min) => {
+      const dx = b.p.x - ox, dz = b.p.z - oz, d = Math.hypot(dx, dz) || 1e-3
+      if (d >= min) return false
+      const k = min - d, nx = b.p.x + dx / d * k, nz = b.p.z + dz / d * k
+      if (freeTile(nx, nz)) { b.p.x = nx; b.p.z = nz; if (b.sh) { SH.x = nx; SH.z = nz } }
+      if (b.a) { b.a.tx = b.p.x + dx / d * 0.6; b.a.tz = b.p.z + dz / d * 0.6; if (!freeTile(b.a.tx, b.a.tz)) { b.a.tx = b.p.x; b.a.tz = b.p.z } }   // hayvon chetga qochadi
+      return true
+    }
+    // o'yinchi hammani itarib o'tadi (ichidan o'tib ketmaydi)
+    if (withPlayer) for (const b of list) push(b, PL.x, PL.z, PR + b.r)
+    // o'zaro: qo'y qo'yning, odam odamning ichiga kirmaydi
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const A = list[i], B = list[j], dx = B.p.x - A.p.x, dz = B.p.z - A.p.z, d = Math.hypot(dx, dz), min = A.r + B.r
+      if (d < min && d > 1e-4) { const k = (min - d) / 2, ux = dx / d * k, uz = dz / d * k
+        if (freeTile(A.p.x - ux, A.p.z - uz)) { A.p.x -= ux; A.p.z -= uz } if (freeTile(B.p.x + ux, B.p.z + uz)) { B.p.x += ux; B.p.z += uz }
+        if (A.sh) { SH.x = A.p.x; SH.z = A.p.z } if (B.sh) { SH.x = B.p.x; SH.z = B.p.z } }
+    }
+    // maxluqlar o'yinchi ichiga kirmaydi
+    const raid = G.raid
+    if (withPlayer && raid) for (const m of raid.mons) {
+      if (m.hp <= 0) continue
+      const mx = m.x - 0.5, mz = m.y - 0.5, dx = mx - PL.x, dz = mz - PL.z, d = Math.hypot(dx, dz) || 1e-3, min = PR + (m.type === 'troll' ? 0.3 : 0.2)
+      if (d < min) { m.x += dx / d * (min - d); m.y += dz / d * (min - d) }
+    }
+  }
+
   // ---------- Ekran ↔ dunyo ----------
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitV = new THREE.Vector3()
   function groundAt(sx, sy) { ndc.set(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); return ray.ray.intersectPlane(plane, hitV) ? hitV.clone() : null }
@@ -593,7 +737,7 @@ function init() {
     if (raid && !raid.done) { ctx.fillStyle = 'rgba(120,0,0,.12)'; ctx.fillRect(0, 0, innerWidth, innerHeight) }
     // o'yinchi nomi va joni
     if (player && camMode === 'third') {
-      const p = projectXYZ(PL.x, PL.y + 1.12, PL.z)
+      const p = projectXYZ(PL.x, PL.y + 0.84, PL.z)
       ctx.font = '800 12px Manrope'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3
       ctx.strokeText(PL.name, p.x, p.y); ctx.fillText(PL.name, p.x, p.y); ctx.textAlign = 'start'
     }
@@ -607,7 +751,7 @@ function init() {
     // Shinobu gapi
     const say = G.bubble
     if (say && shino && shino.holder.visible) {
-      const p = projectXYZ(shino.holder.position.x, 0.85, shino.holder.position.z)
+      const p = projectXYZ(shino.holder.position.x, 0.72, shino.holder.position.z)
       bubble(ctx, p.x, p.y, say)
     }
   }
@@ -649,16 +793,37 @@ function init() {
     // arvoh
     const gh = G.ghost
     if (gh) { const s = G.DEFS[gh.type].size; ghostMesh.visible = true; ghostMesh.scale.set(s, 1, s); ghostMesh.position.set(gh.x + (s - 1) / 2, 0.04, gh.y + (s - 1) / 2); ghostMesh.material.color.set(G.canPlace(gh.type, gh.x, gh.y) ? '#4fd18b' : '#ff7a6b') } else ghostMesh.visible = false
-    // Shinobu
+    // Shinobu: o'yinchi rejimida Qurbonov orqasidan yuradi, aks holda o'z ishi bilan (tunda uy eshigi oldida mudraydi)
     if (shino) {
-      const pet = G.pet
-      shino.holder.visible = !pet.inside
-      const px = pet.x - 0.5, pz = pet.y - 0.5
-      const moving = Math.hypot(px - shino.holder.position.x, pz - shino.holder.position.z) > 0.004
-      if (moving) { const a = Math.atan2(px - shino.holder.position.x, pz - shino.holder.position.z); shino.holder.rotation.y = lerpAngle(shino.holder.rotation.y, a, 0.2) }
+      const pet = G.pet, follow = camMode !== 'top' && player && !PL.dead
+      let tx, tz
+      if (follow) {
+        const back = player.holder.rotation.y + Math.PI   // o'yinchining orqa-chap tomoni
+        tx = PL.x + Math.sin(back + 0.6) * 0.75; tz = PL.z + Math.cos(back + 0.6) * 0.75
+        if (!freeTile(tx, tz)) { tx = PL.x + Math.sin(back) * 0.6; tz = PL.z + Math.cos(back) * 0.6 }
+        if (Math.hypot(PL.x - SH.x, PL.z - SH.z) > 7) { SH.x = tx; SH.z = tz }   // juda uzoqda qolsa — yoniga keladi
+      } else if (pet.inside) {
+        const hs = G.W.b.find((b) => b.type === 'house' && !b.building)
+        tx = hs ? hs.x + 0.1 : pet.x - 0.5; tz = hs ? hs.y + 0.75 : pet.y - 0.5
+      } else { tx = pet.x - 0.5; tz = pet.y - 0.5 }
+      const dx = tx - SH.x, dz = tz - SH.z, d = Math.hypot(dx, dz)
+      const far = follow ? Math.hypot(PL.x - SH.x, PL.z - SH.z) : 0
+      const spd = follow ? (far > 1.6 ? 1.9 : 0.8) : 0.9
+      const moving = d > (follow ? 0.25 : 0.02)
+      if (moving) {
+        const st = Math.min(d, spd * dt), nx = SH.x + dx / d * st, nz = SH.z + dz / d * st
+        const out = !freeTile(SH.x, SH.z), ox = SH.x, oz = SH.z   // bino ichida qolib ketgan bo'lsa — chiqib ketaveradi
+        if (freeTile(nx, SH.z) || out || !follow) SH.x = nx
+        if (freeTile(SH.x, nz) || out || !follow) SH.z = nz
+        // burchakda tiqilib qolsa — 2 soniyadan keyin yoniga keladi
+        if (follow && Math.hypot(SH.x - ox, SH.z - oz) < st * 0.2) { SH.stuck = (SH.stuck || 0) + dt; if (SH.stuck > 2 && freeTile(tx, tz)) { SH.x = tx; SH.z = tz; SH.stuck = 0 } } else SH.stuck = 0
+        shino.holder.rotation.y = lerpAngle(shino.holder.rotation.y, Math.atan2(dx, dz), 0.2)
+      } else if (follow) shino.holder.rotation.y = lerpAngle(shino.holder.rotation.y, Math.atan2(PL.x - SH.x, PL.z - SH.z), 0.06)
       else shino.holder.rotation.y = lerpAngle(shino.holder.rotation.y, view.az, 0.03)
-      shino.holder.position.set(px, 0, pz)
-      shino.play(moving ? 'walk' : 'idle')
+      shino.holder.visible = true
+      shino.holder.position.set(SH.x, 0, SH.z)
+      const clip = moving ? 'walk' : pet.inside && !follow ? 'yawn' : G.raid && !G.raid.done ? 'scared' : 'idle'
+      shino.play(clip); if (moving) setSpeed(shino, 'walk', Math.min(d / dt, spd))
       shino.mixer.update(dt); shino.vrm.update(dt)
     }
     // qo'shin hujumda chayqaladi
@@ -678,6 +843,7 @@ function init() {
       animateHumanoid(u, time / 1000 + u.userData.i, fighting && d < 0.4 ? 'attack' : d > 0.05 ? 'run' : G.raid && G.raid.done ? 'cheer' : 'idle')
     }
     folkTick(dt, time); animalTick(dt, time)
+    collide()
     // maxluqlar
     const raid = G.raid, alive = new Set()
     if (raid) for (const m of raid.mons) {
@@ -699,6 +865,7 @@ function init() {
       d.o.scale.multiplyScalar(d.t > 0.6 ? 0.9 : 1)
       if (d.t > 1.1) { monGroup.remove(d.o); dying.splice(i, 1) }
     }
+    fadeBuildings()
     renderer.render(scene, camera)
     overlay(ctx, time)
   }
@@ -718,10 +885,13 @@ function init() {
       view.tx += (-dx * fz - dy * fx) * k; view.tz += (dx * fx - dy * fz) * k
       view.tx = Math.max(-2, Math.min(N + 1, view.tx)); view.tz = Math.max(-2, Math.min(N + 1, view.tz)); saveView()
     },
-    zoom(f) { if (camMode === 'third') { PL.camD = Math.max(1.2, Math.min(6, (PL.camD || 2.8) / f)); return } if (camMode !== 'top') return; view.dist = Math.max(6, Math.min(34, view.dist / f)); saveView() },
+    zoom(f) { if (camMode === 'third') { PL.camD = Math.max(0.9, Math.min(6, (PL.camD || 2.2) / f)); return } if (camMode !== 'top') return; view.dist = Math.max(6, Math.min(34, view.dist / f)); saveView() },
     rotate(d) { view.az += d; saveView() },
     playerMode: () => camMode !== 'top' && !!player,
     attack: () => attack(),
+    click: (e) => mouseClick(e),
+    dbg: () => ({ SH: { ...SH }, PL: { x: PL.x, z: PL.z }, shino: !!shino, player: !!player, animals: animals.map((a) => [a.o.position.x, a.o.position.z]) }),
+    tp(x, z) { PL.x = x; PL.z = z },
     hitPet(sx, sy) { if (!shino || !shino.holder.visible) return false; const p = projectXYZ(shino.holder.position.x, 0.35, shino.holder.position.z); return Math.hypot(sx - p.x, sy - p.y) < 30 },
     pickMonster(sx, sy) {
       const raid = G.raid; if (!raid) return null

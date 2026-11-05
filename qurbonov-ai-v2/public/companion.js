@@ -152,7 +152,7 @@ function walkTo(x, y, then) {
   const dist = Math.hypot(x - r.left, y - r.top)
   if (dist < 12) { place(x, y, false); then?.(); return }
   if (P.sleeping) wakeUp(true)
-  const ms = Math.min(9000, Math.max(800, dist / 75 * 1000))
+  const ms = Math.min(9000, Math.max(700, dist / (C.h * 0.62) * 1000))   // qadam tezligiga mos — oyoq sirpanmaydi
   C.av?.setFacing(x < r.left ? -1 : 1)
   setPose('walk')
   place(x, y, true, ms)

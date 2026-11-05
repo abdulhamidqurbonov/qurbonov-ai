@@ -552,7 +552,7 @@ cv.addEventListener('pointerup', (e) => {
   const g = screenToGrid(e.clientX, e.clientY)
   if (mode === 'place') { const s = DEFS[ghost.type].size; return place(g.x - (s > 1 ? 1 : 0), g.y - (s > 1 ? 1 : 0)) }
   // 3-shaxs / 1-shaxs: sichqoncha (yoki barmoq) bosilsa — qilich bilan uradi
-  if (R3()?.playerMode?.() && e.pointerType !== 'touch') { R3().attack(); return }
+  if (R3()?.playerMode?.() && e.pointerType !== 'touch') { R3().click ? R3().click(e) : R3().attack(); return }
   if (hitMonster(e.clientX, e.clientY)) return
   // Shinobu'ni bosish
   const pp = toScreen(iso(pet.x - 0.5, pet.y - 0.5).x, iso(pet.x - 0.5, pet.y - 0.5).y)
