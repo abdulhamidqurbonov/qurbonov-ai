@@ -589,7 +589,8 @@ kbd { font: 500 10.5px 'JetBrains Mono', monospace; color: var(--faint); border:
 .hearts canvas { width: 100%; height: 100%; display: block; }
 .hearts-tip { position: absolute; left: 0; right: 0; top: 12px; text-align: center; font-size: 11.5px; color: var(--faint); pointer-events: none; }
 @media (max-width: 760px) { .rps-side i { width: 76px; height: 76px; } .pp-grid { grid-template-columns: repeat(5, 1fr); } }
-.prop-pillow { z-index: 1; } .prop-blanket { z-index: 2; }
+.prop-pillow { z-index: 1; } .prop-blanket { z-index: 2; pointer-events: auto; cursor: grab; touch-action: none; }
+.pet-fx .prop-blanket svg { height: 100%; } .prop-blanket.grab { cursor: grabbing; }
 
 /* ---- hamroh: paydo bo'lish / yo'qolish, yotish, effektlar ---- */
 .pet.poof-in { animation: petIn .6s cubic-bezier(.2,1.5,.4,1); }

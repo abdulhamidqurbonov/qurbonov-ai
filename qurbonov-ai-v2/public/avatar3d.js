@@ -246,7 +246,7 @@ function mount(container, url, { onReady, onError, onProgress } = {}) {
       tmp.project(camera)
       return { x: (tmp.x + 1) / 2 * container.clientWidth, y: (1 - tmp.y) / 2 * container.clientHeight }
     }
-    const raw = st.vrm?.humanoid?.getRawBoneNode(name === 'head' ? 'head' : name === 'hand' ? 'rightHand' : name === 'chest' ? 'chest' : name === 'foot' ? 'rightFoot' : name === 'lhand' ? 'leftHand' : 'hips')
+    const raw = st.vrm?.humanoid?.getRawBoneNode(name === 'head' ? 'head' : name === 'hand' ? 'rightHand' : name === 'chest' ? 'chest' : name === 'foot' ? 'rightFoot' : name === 'lfoot' ? 'leftFoot' : name === 'lhand' ? 'leftHand' : 'hips')
     if (!raw) return null
     raw.getWorldPosition(tmp)
     if (name === 'head') tmp.y += 0.06

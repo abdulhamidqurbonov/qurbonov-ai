@@ -278,11 +278,20 @@ function fxTick() {
     : { w: W * 0.32, x: a.x, y: a.y - Hh * 0.06 })
   // Yotganda: ko'rpa tanani yopadi, yostiq bosh ostida
   const lying = C.lying && P.sleeping
+  // ko'rpa: bo'yinidan oyoq uchigacha to'liq yopadi; sichqoncha bilan surib o'zingiz yopib qo'yishingiz mumkin
   show(lying && P.blanket ? 'blanket' : null, 'prop-blanket', 'hips', (a) => {
-    const f = C.av.anchor('foot'), c = C.av.anchor('chest') || a
-    const x1 = c.x - W * 0.04, x2 = (f ? f.x : a.x + W * 0.3) - W * 0.02
-    return { w: x2 - x1, x: (x1 + x2) / 2, y: a.y - Hh * 0.3, h: Hh * 0.5 }
+    const hd = C.av.anchor('head') || a, f1 = C.av.anchor('foot'), f2 = C.av.anchor('lfoot')
+    const fx = [f1?.x, f2?.x].filter((v) => v != null)
+    const dir = (fx.length ? fx[0] : a.x + 1) > hd.x ? 1 : -1
+    const feet = fx.length ? (dir > 0 ? Math.max(...fx) : Math.min(...fx)) : a.x + dir * W * 0.35
+    const neck = hd.x + dir * W * (0.11 + (P.coverAdj ?? 0.05))
+    const tip = feet + dir * W * 0.08
+    const x1 = Math.min(neck, tip), x2 = Math.max(neck, tip)
+    C.blDir = dir
+    return { w: x2 - x1, x: (x1 + x2) / 2, y: a.y - Hh * 0.36, h: Hh * 0.62 }
   })
+  const blk = C.fx.querySelector('.prop-blanket')
+  if (blk && !blk.dataset.drag) { blk.dataset.drag = 1; blanketDrag(blk) }
   // yostiq — personaj ORQASIDA (boshi ustida emas, ostida ko'rinadi)
   show(lying && P.pillow ? 'pillow' : null, 'prop-pillow', 'head', (a) => ({ w: W * 0.3, x: a.x + W * 0.07, y: a.y - Hh * 0.02 }), true)
   // Ovqatdan keyin yuzida "shokolad" dog'i
@@ -294,6 +303,23 @@ function fxTick() {
   } else m?.remove()
 }
 setInterval(fxTick, 80)
+function blanketDrag(el) {
+  let sx = null, a0 = 0
+  const stop = (e) => { e.stopPropagation() }
+  el.addEventListener('click', stop)
+  el.addEventListener('pointerdown', (e) => {
+    e.stopPropagation(); e.preventDefault(); sx = e.clientX; a0 = P.coverAdj ?? 0.05; el.setPointerCapture(e.pointerId); el.classList.add('grab')
+  })
+  el.addEventListener('pointermove', (e) => {
+    if (sx == null) return
+    const W = C.el.clientWidth, dx = (e.clientX - sx) / W
+    P.coverAdj = Math.max(-0.09, Math.min(0.3, a0 + dx * (C.blDir || 1)))   // boshiga qarab sursangiz — iyagigacha yopiladi
+  })
+  el.addEventListener('pointerup', (e) => {
+    if (sx == null) return; sx = null; el.classList.remove('grab'); savePet()
+    if ((P.coverAdj ?? 0) < 0.02 && !C.tucked) { C.tucked = true; setTimeout(() => { C.tucked = false }, 60000); spawnFx('heart'); setTimeout(() => spawnFx('heart'), 350) }
+  })
+}
 function hold(id, ms, at, extra = {}) { held = { id, until: Date.now() + ms, at, ...extra } }
 
 // ---------- Gapirish ----------

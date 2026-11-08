@@ -24,7 +24,9 @@ const RK = Object.keys(RES)
 // cost — 1-daraja narxi; har daraja ×1.8. prod — soatiga (daraja bilan ko'payadi). time — soniya.
 const DEFS = {
   house: { name: 'Shinobu uyi', desc: "Shinobu shu yerda uxlaydi va dam oladi. Hamma narsa shundan boshlanadi.", size: 1, cost: { wood: 20 }, time: 15, max: 1, maxLvl: 3 },
-  castle: { name: 'Qasr', desc: "Ombor sig'imini oshiradi, boshqa binolarni yuqori darajaga ko'tarishga ruxsat beradi.", size: 2, cost: { wood: 60, stone: 40 }, time: 45, max: 1, req: ['house'], maxLvl: 5 },
+  home: { name: 'Qurbonov uyi', desc: "Sizning shaxsiy uyingiz. 3D rejimda eshigi oldida E bosib kirasiz va uxlaysiz (joningiz tiklanadi, tun o'tib ketadi).", size: 2, cost: { wood: 50, stone: 20 }, time: 30, max: 1, req: ['house'], maxLvl: 3 },
+  cottage: { name: 'Aholi uyi', desc: "Qishloq aholisi yashaydi: shahar jonlanadi, har bir uy ozgina soliq (oltin) beradi.", size: 1, cost: { wood: 25, stone: 10 }, time: 20, prod: { gold: 8 }, req: ['house'], maxLvl: 1 },
+  castle: { name: 'Qasr', desc: "Katta tosh qasr: baland devorlar, minoralar va katta darvoza. Ombor sig'imini oshiradi, boshqa binolarni yuqori darajaga ko'tarishga ruxsat beradi.", size: 4, cost: { wood: 60, stone: 40 }, time: 45, max: 1, req: ['house'], maxLvl: 5 },
   farm: { name: 'Ferma', desc: 'Ovqat yetishtiradi.', size: 1, cost: { wood: 25 }, time: 20, prod: { food: 60 }, req: ['house'], maxLvl: 5 },
   lumber: { name: "Yog'ochxona", desc: "Yog'och tayyorlaydi. O'rmon yonida tezroq ishlaydi.", size: 1, cost: { wood: 15, stone: 5 }, time: 20, prod: { wood: 70 }, near: 'tree', req: ['house'], maxLvl: 5 },
   mine: { name: 'Kon', desc: "Tosh va ozgina oltin qazib oladi. Qoyalar yonida tezroq.", size: 1, cost: { wood: 30 }, time: 25, prod: { stone: 55, gold: 6 }, near: 'rock', req: ['house'], maxLvl: 5 },
@@ -32,8 +34,8 @@ const DEFS = {
   fountain: { name: 'Favvora', desc: "Chiroyli favvora. Shinobu'ning kayfiyatini ko'taradi.", size: 1, cost: { stone: 30, gold: 20 }, time: 20, max: 3, req: ['house'], maxLvl: 1 },
   tower: { name: 'Minora', desc: "Maxluqlarga yaqinlashganda o'q uzadi (5 katak masofaga).", size: 1, cost: { wood: 20, stone: 45 }, time: 30, req: ['castle'], maxLvl: 5 },
   wall: { name: 'Devor', desc: "Tosh devor. Maxluqlar zarbasini o'ziga oladi.", size: 1, cost: { stone: 8 }, time: 4, req: ['castle'], maxLvl: 3 },
-  barracks: { name: 'Kazarma', desc: "Askar, kamonchi va ritsar tayyorlaydi. Darajasi oshsa — ko'proq va tezroq.", size: 1, cost: { wood: 80, stone: 60, gold: 30 }, time: 60, max: 1, req: ['castle'], maxLvl: 5 },
-  guild: { name: 'Gildiya', desc: "Topshiriqlar beradi: bajarsangiz resurs, tajriba va Shinobu uchun sovg'a.", size: 1, cost: { wood: 100, stone: 80, gold: 60 }, time: 75, max: 1, req: ['castle'], reqLvl: 2, maxLvl: 5 },
+  barracks: { name: 'Kazarma', desc: "Askar, kamonchi va ritsar tayyorlaydi. Darajasi oshsa — ko'proq va tezroq.", size: 2, cost: { wood: 80, stone: 60, gold: 30 }, time: 60, max: 1, req: ['castle'], maxLvl: 5 },
+  guild: { name: 'Gildiya', desc: "Topshiriqlar beradi: bajarsangiz resurs, tajriba va Shinobu uchun sovg'a.", size: 2, cost: { wood: 100, stone: 80, gold: 60 }, time: 75, max: 1, req: ['castle'], reqLvl: 2, maxLvl: 5 },
 }
 const costOf = (type, lvl) => Object.fromEntries(Object.entries(DEFS[type].cost).map(([k, v]) => [k, Math.round(v * Math.pow(1.8, lvl - 1))]))
 const timeOf = (type, lvl) => Math.round(DEFS[type].time * Math.pow(1.6, lvl - 1))
@@ -60,6 +62,44 @@ function newWorld() {
 }
 const W = store.get('world', null) || newWorld()
 const save = () => { W.last = Date.now(); store.set('world', W) }
+// Qasr endi 3×3 — eski (2×2) saqlangan dunyoda joyini kengaytiramiz (yo'lidagi daraxt/toshlar tozalanadi)
+;(function populateVillage() {
+  // Qishloqni aholi uylari bilan to'ldiramiz (bir marta): bo'sh o't kataklariga, binolar atrofiga, ko'chalar qoldirib
+  if (W.villageV1) return
+  W.villageV1 = true
+  const S = (b) => DEFS[b.type]?.size || 1
+  const taken = (x, y, pad) => W.b.some((b) => x >= b.x - pad && x < b.x + S(b) + pad && y >= b.y - pad && y < b.y + S(b) + pad)
+  const ok = (x, y) => { if (x < 1 || y < 1 || x >= N - 1 || y >= N - 1) return false; const t = W.tiles[y * N + x]; return t.k === 'grass' && !taken(x, y, 1) }
+  const C = W.b.find((b) => b.type === 'castle') || W.b.find((b) => b.type === 'house') || { x: N / 2, y: N / 2 }
+  const cand = []
+  for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) if ((x + y) % 2 === 0) cand.push([x, y, Math.hypot(x - C.x, y - C.y) + Math.random() * 3])
+  cand.sort((a, b) => a[2] - b[2])
+  let n = 0
+  for (const [x, y] of cand) { if (n >= 12) break; if (ok(x, y)) { W.b.push({ type: 'cottage', x, y, lvl: 1, building: false, sz: 1 }); n++ } }
+  save()
+})()
+;(function migrateSizes() {
+  // Binolar kattalashdi (qasr 4×4, gildiya va kazarma 2×2) — eski saqlangan dunyoda joyini kengaytiramiz, yo'lidagi daraxt/toshlar tozalanadi
+  const OLD = { castle: 2, home: 2 }, T = (x, y) => (x >= 0 && y >= 0 && x < N && y < N ? W.tiles[y * N + x] : null)
+  let changed = false
+  for (const c of W.b) {
+    const S = DEFS[c.type]?.size || 1, cur = c.sz || OLD[c.type] || 1
+    if (cur === S) continue
+    const fits = (x, y) => {
+      for (let dy = 0; dy < S; dy++) for (let dx = 0; dx < S; dx++) {
+        const t = T(x + dx, y + dy); if (!t || t.k === 'water' || t.k === 'bridge') return false
+        if (W.b.some((b) => b !== c && x + dx >= b.x && x + dx < b.x + (DEFS[b.type]?.size || 1) && y + dy >= b.y && y + dy < b.y + (DEFS[b.type]?.size || 1))) return false
+      }
+      return true
+    }
+    const cand = []
+    for (let r = 0; r < 14; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === r) cand.push([c.x + dx, c.y + dy])
+    const spot = cand.find(([x, y]) => fits(x, y))
+    if (spot) { c.x = spot[0]; c.y = spot[1]; for (let dy = 0; dy < S; dy++) for (let dx = 0; dx < S; dx++) { const t = T(c.x + dx, c.y + dy); t.k = 'grass'; t.f = false } }
+    c.sz = S; changed = true
+  }
+  if (changed) save()
+})()
 const tile = (x, y) => (x >= 0 && y >= 0 && x < N && y < N ? W.tiles[y * N + x] : null)
 
 const has = (type, lvl = 1) => W.b.some((b) => b.type === type && b.lvl >= lvl && !b.building)
@@ -231,6 +271,13 @@ function drawBuilding(b, time, ghost) {
     box(c.x, c.y, hw, hh, 18 * z, '#c9b8a0'); roof(c.x, c.y, hw * 1.05, hh * 1.05, 18 * z, 14 * z, '#b8323f')
     ctx.strokeStyle = '#555'; ctx.lineWidth = 1.2 * z; ctx.beginPath(); ctx.moveTo(c.x + hw * 0.7, c.y - 4 * z); ctx.lineTo(c.x + hw * 0.7, c.y - 40 * z); ctx.stroke()
     poly([[c.x + hw * 0.7, c.y - 40 * z], [c.x + hw * 0.7 + 10 * z, c.y - 36 * z], [c.x + hw * 0.7, c.y - 32 * z]], '#b8323f')
+  } else if (T === 'cottage') {
+    box(c.x, c.y, hw * 0.6, hh * 0.6, 22 * z, '#efe4d0'); roof(c.x, c.y, hw * 0.68, hh * 0.68, 22 * z, 18 * z, '#c4542e')
+    ctx.fillStyle = '#6b3d26'; ctx.fillRect(c.x + hw * 0.15, c.y - 12 * z, 6 * z, 10 * z)
+  } else if (T === 'home') {
+    box(c.x, c.y, hw * 0.8, hh * 0.8, 30 * z, '#e9dcc8'); roof(c.x, c.y, hw * 0.88, hh * 0.88, 30 * z, 26 * z, '#3f8f6f')
+    ctx.fillStyle = '#6b3d26'; ctx.fillRect(c.x + hw * 0.2, c.y - 16 * z, 9 * z, 14 * z)
+    ctx.fillStyle = isNight() ? 'rgba(255,224,138,.95)' : '#7ad3ff'; ctx.fillRect(c.x - hw * 0.5, c.y - 22 * z, 8 * z, 7 * z)
   } else if (T === 'guild') {
     box(c.x, c.y, hw * 0.9, hh * 0.9, 30 * z, '#efe6d4'); roof(c.x, c.y, hw * 0.95, hh * 0.95, 30 * z, 20 * z, '#3f6fd6')
     ctx.fillStyle = '#f4c542'; ctx.beginPath(); ctx.arc(c.x + hw * 0.4, c.y - 18 * z, 4 * z, 0, 7); ctx.fill()
@@ -247,7 +294,9 @@ function drawBuilding(b, time, ghost) {
 const PETS = store.get('pet', {})
 const face = new Image(); face.src = '/models/vampira.jpg'
 const pet = { x: 10.5, y: 10.5, tx: 10.5, ty: 10.5, wait: 2, inside: false, say: '', sayT: 0, dir: 1, walkT: 0 }
-function isNight() { const h = new Date().getHours(); return h >= 22 || h < 6 }
+function isNight() { if ((store.get('gfx', {}).day || 'day') !== 'real') return false; if ((W.dayUntil || 0) > Date.now()) return false; const h = new Date().getHours(); return h >= 22 || h < 6 }
+// uyda uxlaganda tun o'tib ketadi (ertalab 6:00 gacha kunduz bo'ladi)
+function skipNight() { const d = new Date(); if (d.getHours() >= 6) d.setDate(d.getDate() + 1); d.setHours(6, 0, 0, 0); W.dayUntil = d.getTime(); pet.inside = false; save() }
 function drawPet(time) {
   if (pet.inside) return
   const p = iso(pet.x - 0.5, pet.y - 0.5), c = toScreen(p.x, p.y), z = cam.z
@@ -672,14 +721,31 @@ function battleModal(res, extra, live) {
 // --- Jonli hujum (sahifa ochiq bo'lsa ko'rinadi, siz maxluqlarni bosib yordam berasiz) ---
 let raid = null
 const arrows = []
-function castlePos() { const c = W.b.find((b) => b.type === 'castle' && !b.building); return c ? { x: c.x + 1, y: c.y + 1 } : { x: 11, y: 11 } }
+function castlePos() { const c = W.b.find((b) => b.type === 'castle' && !b.building); const s = DEFS.castle.size; return c ? { x: c.x + s / 2, y: c.y + s / 2 } : { x: 11, y: 11 } }
+// maxluqlar qasr DARVOZASIGA hujum qiladi (devor ichiga kirib ketmaydi)
+function gatePos() { const c = W.b.find((b) => b.type === 'castle' && !b.building); const s = DEFS.castle.size; return c ? { x: c.x + s / 2, y: c.y + s + 0.4 } : castlePos() }
+// Shahar devori darvozalari (har tomonda bittadan, quruqlikda) — maxluqlar shu yerdan kiradi
+function cityGates() {
+  if (cityGates.c) return cityGates.c
+  const land = (x, y) => { const t = W.tiles[y * N + x]; return t && t.k !== 'water' && t.k !== 'bridge' }
+  const mid = Math.floor(N / 2), res = []
+  const pick = (fn) => { for (let d = 0; d < N / 2; d++) for (const s of [1, -1]) { const i = mid + s * d; if (i >= 1 && i < N - 1 && (i + 1) % 6 !== 0 && fn(i)) return i } return null }
+  let i = pick((i) => land(i, 0)); if (i != null) res.push({ x: i, y: -1, dx: 0, dy: -1 })
+  i = pick((i) => land(i, N - 1)); if (i != null) res.push({ x: i, y: N, dx: 0, dy: 1 })
+  i = pick((i) => land(0, i)); if (i != null) res.push({ x: -1, y: i, dx: -1, dy: 0 })
+  i = pick((i) => land(N - 1, i)); if (i != null) res.push({ x: N, y: i, dx: 1, dy: 0 })
+  return (cityGates.c = res)
+}
 function startRaid() {
   const types = makeWave(W.raidN)
   const cp = castlePos()
   raid = { t0: performance.now(), mons: types.map((type, i) => {
     const edge = Math.random()
-    const sx = edge < 0.5 ? Math.random() * 6 : -1, sy = edge < 0.5 ? -1 : Math.random() * 6
-    return { type, hp: MON[type].hp, max: MON[type].hp, x: sx - i * 0.35, y: sy - i * 0.25, tx: cp.x + (Math.random() - 0.5) * 1.6, ty: cp.y + (Math.random() - 0.5) * 1.6, arrived: false, hit: 0 }
+    const gts = cityGates(), gt = gts[Math.floor(edge * gts.length)] || { x: -1, y: -1, dx: -1, dy: -1 }
+    const sx = gt.x + 0.5 + gt.dx * 1.5, sy = gt.y + 0.5 + gt.dy * 1.5   // shahar darvozasi tashqarisidan
+    // avval shahar darvozasidan ichkariga kiradi, keyin qasr darvozasiga boradi
+    const gp = gatePos(), inX = gt.x + 0.5 - gt.dx * 1.6, inY = gt.y + 0.5 - gt.dy * 1.6
+    return { type, hp: MON[type].hp, max: MON[type].hp, x: sx - gt.dy * i * 0.3 + gt.dx * i * 0.4, y: sy - gt.dx * i * 0.3 + gt.dy * i * 0.4, tx: inX, ty: inY, fx: gp.x + (Math.random() - 0.5) * 1.8, fy: gp.y + Math.random() * 0.8, arrived: false, hit: 0 }
   }), towerT: 0, done: false }
   const kinds = [...new Set(types)].map((t) => MON[t].name.toLowerCase())
   // Shinobu har doim emas, ba'zan baqiradi
@@ -692,7 +758,7 @@ function raidTick(dt) {
   for (const m of raid.mons) {
     if (m.hp <= 0 || m.arrived) continue
     const dx = m.tx - m.x, dy = m.ty - m.y, d = Math.hypot(dx, dy)
-    if (d < 0.15) { m.arrived = true; continue }
+    if (d < 0.15) { if (m.fx != null) { m.tx = m.fx; m.ty = m.fy; m.fx = null; continue } m.arrived = true; continue }
     const sp = MON[m.type].speed * 0.55 * dt
     m.x += dx / d * Math.min(d, sp); m.y += dy / d * Math.min(d, sp)
   }
@@ -981,6 +1047,6 @@ function welcome() {
 
 welcome()
 requestAnimationFrame(frame)
-window.__world = { W, cam, pet, iso, toScreen, canPlace, DEFS, UNITS, MON, startRaid: () => startRaid(), get raid() { return raid }, get ghost() { return ghost }, isNight, castleLvl,
+window.__world = { W, cam, pet, iso, toScreen, canPlace, DEFS, UNITS, MON, startRaid: () => startRaid(), get raid() { return raid }, get ghost() { return ghost }, isNight, skipNight, cityGates, castleLvl, save: () => save(), stats: () => W.stats, bubbleSay: (t) => say(t),
   openArmy: () => openArmy(), openGuild: () => openGuild(), get bubble() { return pet.say && performance.now() < pet.sayT ? pet.say : '' } }
 dispatchEvent(new Event('world-ready'))   // sinov uchun
